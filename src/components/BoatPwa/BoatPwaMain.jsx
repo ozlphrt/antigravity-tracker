@@ -222,6 +222,9 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncedTime, setLastSyncedTime] = useState(Date.now());
   const lastCapturedPos = useRef(null);
+  
+  const [hasFinished, setHasFinished] = useState(false);
+  const [hasDownloadedRoute, setHasDownloadedRoute] = useState(false);
 
   useEffect(() => {
     if (!onStatusChange) return;
@@ -442,6 +445,42 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
       targetName = 'FINISHED';
     }
   }
+
+  // Handle Race Finish
+  useEffect(() => {
+    if (course && activePos) {
+      const targets = course.checkpoints.filter(isRaceTarget);
+      if (activeTargetIndex >= targets.length && targets.length > 0) {
+        if (!hasFinished) setHasFinished(true);
+      }
+    }
+  }, [activeTargetIndex, course, activePos, hasFinished]);
+
+  useEffect(() => {
+    if (hasFinished && !hasDownloadedRoute && offlineQueue.length === 0 && syncingQueue.length === 0) {
+      setHasDownloadedRoute(true);
+      
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(trace, null, 2));
+      const downloadAnchorNode = document.createElement('a');
+      downloadAnchorNode.setAttribute("href", dataStr);
+      
+      // format date and time e.g., 2026-05-22_19-30-00
+      const date = new Date();
+      const filenameStr = date.getFullYear() + "-" + 
+                          String(date.getMonth() + 1).padStart(2, '0') + "-" + 
+                          String(date.getDate()).padStart(2, '0') + "_" + 
+                          String(date.getHours()).padStart(2, '0') + "-" + 
+                          String(date.getMinutes()).padStart(2, '0') + "-" + 
+                          String(date.getSeconds()).padStart(2, '0');
+                          
+      downloadAnchorNode.setAttribute("download", `bayk_route_${filenameStr}.json`);
+      document.body.appendChild(downloadAnchorNode);
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+      
+      alert("Race finished! All coordinates successfully uploaded and the route has been saved locally.");
+    }
+  }, [hasFinished, hasDownloadedRoute, offlineQueue.length, syncingQueue.length, trace]);
 
   return (
     <div className="map-container">
