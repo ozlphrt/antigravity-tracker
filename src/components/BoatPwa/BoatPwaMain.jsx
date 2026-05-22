@@ -389,9 +389,9 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
         minDistanceRef.current = distance;
       }
       
-      // Clear buoy early: when we are close to the mark (within 300m) and the mark is now passing behind us
-      // (relative bearing > 100 degrees off the bow), we assume "75% of the turn is completed".
-      if (minDistanceRef.current < 0.3 && Math.abs(relativeBearing) > 100) {
+      // Clear buoy later: when we are close to the mark (within 300m) and the mark is now passing well behind us
+      // (relative bearing > 135 degrees off the bow), we assume the turn is completed.
+      if (minDistanceRef.current < 0.3 && Math.abs(relativeBearing) > 135) {
         if (activeTargetIndex < targets.length) {
           setActiveTargetIndex(prev => prev + 1);
           minDistanceRef.current = Infinity; // Reset for next target
