@@ -31,7 +31,8 @@ body {
 .app-container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100vh; /* Fallback for older browsers */
+  height: 100dvh; /* Dynamic viewport height to prevent clipping on mobile */
 }
 
 /* Header */
@@ -163,7 +164,7 @@ main {
 
 .helm-dashboard {
   position: absolute;
-  bottom: 15px;
+  bottom: max(15px, env(safe-area-inset-bottom));
   left: 50%;
   transform: translateX(-50%);
   width: 90%;
@@ -1014,7 +1015,7 @@ main {
   }
 
   .helm-dashboard {
-    bottom: 10px;
+    bottom: max(10px, env(safe-area-inset-bottom));
     width: calc(100% - 20px);
   }
 }
