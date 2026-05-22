@@ -53,6 +53,7 @@ export function useGpsTracker(boatId, enabled) {
           lng: pos.coords.longitude,
           speed: pos.coords.speed || 0, // meters/sec
           heading: pos.coords.heading || 0, // degrees
+          accuracy: pos.coords.accuracy || 0, // meters
           timestamp: pos.timestamp,
         };
 

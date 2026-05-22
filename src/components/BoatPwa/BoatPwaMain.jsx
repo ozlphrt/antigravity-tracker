@@ -230,10 +230,10 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
       queueSize: offlineQueue.length + syncingQueue.length,
       pointsRecorded: trace.length,
       lastSynced: lastSyncedTime,
-      resolution: '± 4.2m',
+      resolution: position && position.accuracy ? `± ${(position.accuracy).toFixed(1)}m` : '± 4.2m (Sim)',
       collectionStatus: enabled ? 'Active' : 'Paused'
     });
-  }, [isSimOnline, isSyncing, offlineQueue.length, syncingQueue.length, trace.length, lastSyncedTime, enabled, onStatusChange]);
+  }, [isSimOnline, isSyncing, offlineQueue.length, syncingQueue.length, trace.length, lastSyncedTime, enabled, position, onStatusChange]);
 
   useEffect(() => {
     if (courseOverride) {
