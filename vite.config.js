@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'prompt',
+      registerType: 'autoUpdate',
       includeAssets: ['app-icon.png'],
       manifest: {
         name: 'BAYK Sailboat Tracker',
