@@ -223,7 +223,7 @@ main {
 /* Simulator controls */
 .simulator-panel {
   position: absolute;
-  bottom: 130px;
+  bottom: 200px; /* High enough to clear the helm-dashboard */
   right: 15px;
   z-index: 1000;
   width: auto;
@@ -1009,7 +1009,7 @@ main {
   }
 
   .simulator-panel {
-    bottom: 120px;
+    bottom: 220px;
     right: 10px;
     top: auto;
     left: auto;
