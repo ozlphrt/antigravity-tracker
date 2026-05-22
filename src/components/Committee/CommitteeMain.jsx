@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CircleMarker, MapContainer, Marker, Polyline, Popup, TileLayer, useMapEvents } from 'react-leaflet';
+import { CircleMarker, MapContainer, Marker, Polyline, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { CircleDot, Flag, Goal, GitBranch, MapPin, MousePointer2, RotateCcw, Trash2, Menu, Crosshair, Save, FolderOpen, X } from 'lucide-react';
 import {
