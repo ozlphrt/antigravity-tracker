@@ -171,12 +171,13 @@ main {
   max-width: 400px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px; /* reduced gap */
   z-index: 999;
+  margin-top: 0; /* removed extra space */
 }
 
 .helm-dashboard.glass-panel {
-  padding: 10px 15px;
+  padding: 4px 8px; /* smaller padding */
 }
 
 .metric-box {
