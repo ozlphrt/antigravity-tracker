@@ -626,24 +626,42 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
         })}
       </MapContainer>
 
-      <div className="simulator-panel glass-panel" style={{ padding: '8px 16px' }}>
-        <div className="dir-buttons" style={{ marginTop: 0, gap: '24px' }}>
-          <button 
+      <div className="simulator-panel" style={{ padding: '8px', background: 'transparent', boxShadow: 'none', border: 'none' }}>
+        <div className="dir-buttons" style={{ marginTop: 0, gap: '8px', display: 'flex', justifyContent: 'center' }}>
+          <button
             className="steer-btn"
             onClick={() => setSimulatedPos(p => ({...p, targetHeading: (p.targetHeading !== undefined ? p.targetHeading : p.heading) - 10}))}
             title="Steer Port"
           >
-            <svg viewBox="0 0 100 100" fill="#EF4444" width="48" height="48" style={{ filter: 'drop-shadow(0 2px 4px rgba(239,68,68,0.4))' }}>
-              <polygon points="90,10 90,90 10,50" />
+            <svg viewBox="0 0 100 100" width="96" height="96" style={{ filter: 'drop-shadow(0 6px 6px rgba(0,0,0,0.4))' }}>
+              <defs>
+                <linearGradient id="redPlastic" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#ff8f8f" />
+                  <stop offset="30%" stopColor="#ef4444" />
+                  <stop offset="100%" stopColor="#991b1b" />
+                </linearGradient>
+              </defs>
+              <polygon points="85,15 85,85 15,50" fill="url(#redPlastic)" stroke="#7f1d1d" strokeWidth="2" strokeLinejoin="round" />
+              {/* Inner highlight for 3D bevel effect */}
+              <polygon points="82,20 82,80 22,50" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="3" strokeLinejoin="round" />
             </svg>
           </button>
-          <button 
+          <button
             className="steer-btn"
             onClick={() => setSimulatedPos(p => ({...p, targetHeading: (p.targetHeading !== undefined ? p.targetHeading : p.heading) + 10}))}
             title="Steer Starboard"
           >
-            <svg viewBox="0 0 100 100" fill="#22C55E" width="48" height="48" style={{ filter: 'drop-shadow(0 2px 4px rgba(34,197,94,0.4))' }}>
-              <polygon points="10,10 10,90 90,50" />
+            <svg viewBox="0 0 100 100" width="96" height="96" style={{ filter: 'drop-shadow(0 6px 6px rgba(0,0,0,0.4))' }}>
+              <defs>
+                <linearGradient id="greenPlastic" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#6ee7b7" />
+                  <stop offset="30%" stopColor="#22c55e" />
+                  <stop offset="100%" stopColor="#14532d" />
+                </linearGradient>
+              </defs>
+              <polygon points="15,15 15,85 85,50" fill="url(#greenPlastic)" stroke="#14532d" strokeWidth="2" strokeLinejoin="round" />
+              {/* Inner highlight for 3D bevel effect */}
+              <polygon points="18,20 18,80 78,50" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="3" strokeLinejoin="round" />
             </svg>
           </button>
         </div>
