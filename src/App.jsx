@@ -15,11 +15,12 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showDots, setShowDots] = useState(true);
 
-  const statusLabel = boatStatus.state === 'syncing'
+  const syncedPoints = boatStatus.pointsRecorded - boatStatus.queueSize;
+  const statusLabel = (boatStatus.state === 'syncing'
     ? 'SYNCING...'
     : boatStatus.state === 'buffering'
-      ? `BUFFERING (${boatStatus.queueSize})`
-      : 'ONLINE';
+      ? `BUFFERING`
+      : 'ONLINE') + ` (${syncedPoints}/${boatStatus.pointsRecorded || 0})`;
 
   const statusClass = boatStatus.state === 'buffering'
     ? 'offline'
