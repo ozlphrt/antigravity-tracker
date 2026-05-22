@@ -384,6 +384,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
 
   const activePos = enabled ? simulatedPos : (position || simulatedPos);
   const minDistanceRef = useRef(Infinity);
+  const closestSideRef = useRef(null);
 
   // Auto-advance to next buoy using Closest Point of Approach (CPA)
   useEffect(() => {
@@ -411,17 +412,18 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
 
       if (distance < minDistanceRef.current) {
         minDistanceRef.current = distance;
+        closestSideRef.current = relativeBearing < 0 ? 'port' : 'starboard';
       }
       
       let hasRoundedCorrectly = false;
       const rounding = target.rounding ? target.rounding.toLowerCase() : 'line';
       
       if (rounding === 'port') {
-        // Buoy must be on the port (left) side, meaning relativeBearing is negative
-        hasRoundedCorrectly = relativeBearing < -135;
+        // Buoy must be on the port (left) side at closest approach, and passing behind
+        hasRoundedCorrectly = (relativeBearing < -135) && (closestSideRef.current === 'port');
       } else if (rounding === 'starboard') {
-        // Buoy must be on the starboard (right) side, meaning relativeBearing is positive
-        hasRoundedCorrectly = relativeBearing > 135;
+        // Buoy must be on the starboard (right) side at closest approach, and passing behind
+        hasRoundedCorrectly = (relativeBearing > 135) && (closestSideRef.current === 'starboard');
       } else {
         hasRoundedCorrectly = Math.abs(relativeBearing) > 135;
       }
@@ -431,17 +433,23 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
         if (activeTargetIndex < targets.length) {
           setActiveTargetIndex(prev => prev + 1);
           minDistanceRef.current = Infinity; // Reset for next target
+          closestSideRef.current = null;
         }
       } else if (distance > minDistanceRef.current + 0.1 && minDistanceRef.current < 0.4) {
         // Fallback: Turn completed by sailing away
-        // Check if it's on the correct side when sailing away
+        // Check if it was on the correct side at closest approach
         let sideCorrect = true;
-        if (rounding === 'port') sideCorrect = relativeBearing < 0;
-        if (rounding === 'starboard') sideCorrect = relativeBearing > 0;
+        if (rounding === 'port') sideCorrect = closestSideRef.current === 'port';
+        if (rounding === 'starboard') sideCorrect = closestSideRef.current === 'starboard';
         
         if (sideCorrect && activeTargetIndex < targets.length) {
           setActiveTargetIndex(prev => prev + 1);
           minDistanceRef.current = Infinity; // Reset for next target
+          closestSideRef.current = null;
+        } else if (!sideCorrect && distance > 0.2) {
+          // They sailed away on the WRONG side. Reset so they can try again.
+          minDistanceRef.current = Infinity;
+          closestSideRef.current = null;
         }
       }
     }
