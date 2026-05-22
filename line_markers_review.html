@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Start / Gate / Finish Line — Pill Bar Review</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: rgba(0, 0, 0, 0.6);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --line-w: 240px;
+      --line-h: 28px;
+      --line-border: 3px;
+      --dot-size: 10px;
+      --dot-inset: 8px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 20% 20%, #1e3a5f 0%, transparent 40%),
+        radial-gradient(circle at 80% 70%, #14532d 0%, transparent 35%),
+        var(--bg);
+      color: var(--text);
+      padding: 32px 24px 48px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.35rem;
+      font-weight: 600;
+    }
+
+    .intro {
+      max-width: 720px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.5;
+      margin-bottom: 28px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      max-width: 1100px;
+    }
+
+    .card {
+      background: var(--panel);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 20px 18px 16px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+
+    .card h2 {
+      margin: 0 0 4px;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .card .swatch {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    .card p {
+      margin: 0 0 14px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .preview {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100px;
+      background: rgba(30, 58, 95, 0.35);
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .preview--map {
+      background:
+        linear-gradient(180deg, rgba(51, 101, 138, 0.25), rgba(15, 23, 42, 0.5)),
+        rgba(30, 58, 95, 0.4);
+    }
+
+    .specs {
+      margin-top: 12px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-family: ui-monospace, "Cascadia Code", monospace;
+      line-height: 1.45;
+    }
+
+    .row-wide {
+      grid-column: 1 / -1;
+      max-width: 1100px;
+    }
+
+    .angles {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 32px;
+      justify-content: center;
+      padding: 12px 0 4px;
+    }
+
+    .angle-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      min-width: 200px;
+      min-height: 140px;
+      justify-content: center;
+    }
+
+    .angle-item span {
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+
+    .stack-three {
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+      align-items: center;
+      padding: 12px 0;
+    }
+
+    footer {
+      margin-top: 32px;
+      max-width: 720px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    /* ── Chosen pattern: single pill + two inset dots ── */
+    .race-line {
+      position: relative;
+      width: var(--line-w);
+      height: var(--line-h);
+      filter: drop-shadow(0 3px 8px rgba(15, 23, 42, 0.38));
+    }
+
+    .race-line__bar {
+      position: absolute;
+      inset: 0;
+      border-radius: 999px;
+      border: var(--line-border) solid var(--line-edge);
+      background: var(--line-fill);
+    }
+
+    .race-line--start {
+      --line-fill: #22c55e;
+      --line-edge: #166534;
+    }
+
+    .race-line--gate {
+      --line-fill: #f5cb5c;
+      --line-edge: #b7791f;
+    }
+
+    .race-line--finish {
+      --line-fill: #ef4444;
+      --line-edge: #991b1b;
+    }
+
+    .race-line__dot {
+      position: absolute;
+      top: 50%;
+      width: var(--dot-size);
+      height: var(--dot-size);
+      border-radius: 50%;
+      background: #ffffff;
+      transform: translateY(-50%);
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .race-line__dot--start { left: var(--dot-inset); }
+    .race-line__dot--end { right: var(--dot-inset); }
+
+    .markup {
+      margin-top: 14px;
+      padding: 12px;
+      background: rgba(15, 23, 42, 0.55);
+      border-radius: 8px;
+      font-size: 0.68rem;
+      font-family: ui-monospace, monospace;
+      color: #cbd5e1;
+      line-height: 1.5;
+      overflow-x: auto;
+      white-space: pre;
+    }
+  </style>
+</head>
+<body>
+  <h1>Start, Gate &amp; Finish — Pill Bar</h1>
+  <p class="intro">
+    <strong>Chosen pattern:</strong> one pill-shaped bar (rounded caps built in) and two small white dots inset at the tails — no stacked end rings. Same markup for all three; only CSS variables / modifier class changes color.
+  </p>
+
+  <div class="grid">
+    <article class="card">
+      <h2><span class="swatch" style="background:#22c55e"></span>Start Line</h2>
+      <p>Green fill, dark green border.</p>
+      <div class="preview preview--map">
+        <div class="race-line race-line--start" role="img" aria-label="Start line">
+          <span class="race-line__bar"></span>
+          <span class="race-line__dot race-line__dot--start"></span>
+          <span class="race-line__dot race-line__dot--end"></span>
+        </div>
+      </div>
+      <div class="specs">--line-fill #22C55E · --line-edge #166534</div>
+    </article>
+
+    <article class="card">
+      <h2><span class="swatch" style="background:#f5cb5c"></span>Gate</h2>
+      <p>Yellow fill, amber border.</p>
+      <div class="preview preview--map">
+        <div class="race-line race-line--gate" role="img" aria-label="Gate line">
+          <span class="race-line__bar"></span>
+          <span class="race-line__dot race-line__dot--start"></span>
+          <span class="race-line__dot race-line__dot--end"></span>
+        </div>
+      </div>
+      <div class="specs">--line-fill #F5CB5C · --line-edge #B7791F</div>
+    </article>
+
+    <article class="card">
+      <h2><span class="swatch" style="background:#ef4444"></span>Finish Line</h2>
+      <p>Red fill, dark red border — same dots.</p>
+      <div class="preview preview--map">
+        <div class="race-line race-line--finish" role="img" aria-label="Finish line">
+          <span class="race-line__bar"></span>
+          <span class="race-line__dot race-line__dot--start"></span>
+          <span class="race-line__dot race-line__dot--end"></span>
+        </div>
+      </div>
+      <div class="specs">--line-fill #EF4444 · --line-edge #991B1B</div>
+    </article>
+
+    <article class="card row-wide">
+      <h2>All three</h2>
+      <p>Same component, different modifier class.</p>
+      <div class="preview preview--map">
+        <div class="stack-three">
+          <div class="race-line race-line--start">
+            <span class="race-line__bar"></span>
+            <span class="race-line__dot race-line__dot--start"></span>
+            <span class="race-line__dot race-line__dot--end"></span>
+          </div>
+          <div class="race-line race-line--gate">
+            <span class="race-line__bar"></span>
+            <span class="race-line__dot race-line__dot--start"></span>
+            <span class="race-line__dot race-line__dot--end"></span>
+          </div>
+          <div class="race-line race-line--finish">
+            <span class="race-line__bar"></span>
+            <span class="race-line__dot race-line__dot--start"></span>
+            <span class="race-line__dot race-line__dot--end"></span>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="card row-wide">
+      <h2>Rotated (map placement)</h2>
+      <p>Whole pill rotates as one unit — dots stay on the bar ends.</p>
+      <div class="preview preview--map">
+        <div class="angles">
+          <div class="angle-item">
+            <div class="race-line race-line--start" style="transform: rotate(0deg);">
+              <span class="race-line__bar"></span>
+              <span class="race-line__dot race-line__dot--start"></span>
+              <span class="race-line__dot race-line__dot--end"></span>
+            </div>
+            <span>Start · 0°</span>
+          </div>
+          <div class="angle-item">
+            <div class="race-line race-line--gate" style="transform: rotate(35deg);">
+              <span class="race-line__bar"></span>
+              <span class="race-line__dot race-line__dot--start"></span>
+              <span class="race-line__dot race-line__dot--end"></span>
+            </div>
+            <span>Gate · 35°</span>
+          </div>
+          <div class="angle-item">
+            <div class="race-line race-line--finish" style="transform: rotate(70deg);">
+              <span class="race-line__bar"></span>
+              <span class="race-line__dot race-line__dot--start"></span>
+              <span class="race-line__dot race-line__dot--end"></span>
+            </div>
+            <span>Finish · 70°</span>
+          </div>
+          <div class="angle-item">
+            <div class="race-line race-line--gate" style="transform: rotate(-48deg);">
+              <span class="race-line__bar"></span>
+              <span class="race-line__dot race-line__dot--start"></span>
+              <span class="race-line__dot race-line__dot--end"></span>
+            </div>
+            <span>Gate · −48°</span>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="card row-wide">
+      <h2>Markup (Leaflet DivIcon)</h2>
+      <p>Copy pattern — set <code>transform: rotate(…deg)</code> on the root from line bearing.</p>
+      <div class="markup">&lt;div class="race-line race-line--gate" style="transform: rotate(42deg);"&gt;
+  &lt;span class="race-line__bar"&gt;&lt;/span&gt;
+  &lt;span class="race-line__dot race-line__dot--start"&gt;&lt;/span&gt;
+  &lt;span class="race-line__dot race-line__dot--end"&gt;&lt;/span&gt;
+&lt;/div&gt;</div>
+      <div class="specs" style="margin-top:10px">
+        pill 240×28px · border 3px · dots 10px inset 8px · drop-shadow on root
+      </div>
+    </article>
+  </div>
+
+  <footer>
+    Refresh <strong>line_markers_review.html</strong> in the browser.
+  </footer>
+</body>
+</html>
