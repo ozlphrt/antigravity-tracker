@@ -626,10 +626,26 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
         })}
       </MapContainer>
 
-      <div className="simulator-panel glass-panel">
-        <div className="dir-buttons" style={{ marginTop: 0 }}>
-          <button onClick={() => setSimulatedPos(p => ({...p, targetHeading: (p.targetHeading !== undefined ? p.targetHeading : p.heading) - 10}))}>Port</button>
-          <button onClick={() => setSimulatedPos(p => ({...p, targetHeading: (p.targetHeading !== undefined ? p.targetHeading : p.heading) + 10}))}>Stbd</button>
+      <div className="simulator-panel glass-panel" style={{ padding: '8px 16px' }}>
+        <div className="dir-buttons" style={{ marginTop: 0, gap: '24px' }}>
+          <button 
+            className="steer-btn"
+            onClick={() => setSimulatedPos(p => ({...p, targetHeading: (p.targetHeading !== undefined ? p.targetHeading : p.heading) - 10}))}
+            title="Steer Port"
+          >
+            <svg viewBox="0 0 100 100" fill="#EF4444" width="48" height="48" style={{ filter: 'drop-shadow(0 2px 4px rgba(239,68,68,0.4))' }}>
+              <polygon points="90,10 90,90 10,50" />
+            </svg>
+          </button>
+          <button 
+            className="steer-btn"
+            onClick={() => setSimulatedPos(p => ({...p, targetHeading: (p.targetHeading !== undefined ? p.targetHeading : p.heading) + 10}))}
+            title="Steer Starboard"
+          >
+            <svg viewBox="0 0 100 100" fill="#22C55E" width="48" height="48" style={{ filter: 'drop-shadow(0 2px 4px rgba(34,197,94,0.4))' }}>
+              <polygon points="10,10 10,90 90,50" />
+            </svg>
+          </button>
         </div>
       </div>
 

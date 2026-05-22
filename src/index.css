@@ -1135,22 +1135,23 @@ main {
   gap: 10px;
 }
 
-.dir-buttons button {
-  flex: 1;
-  padding: 6px;
-  border: 1px solid #E2E8F0;
-  background: white;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: var(--text-primary);
+.dir-buttons button.steer-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.dir-buttons button:hover {
-  background: #F8FAFC;
-  border-color: #CBD5E1;
+.dir-buttons button.steer-btn:hover {
+  transform: scale(1.15);
+}
+
+.dir-buttons button.steer-btn:active {
+  transform: scale(0.9);
 }
 
 /* Animated Arrow */
