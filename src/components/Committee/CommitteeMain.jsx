@@ -539,22 +539,20 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     .filter(checkpoint => checkpoint.kind === 'start' || checkpoint.kind === 'finish')
     .map(checkpoint => checkpoint.kind));
 
+  // Auto-sync draft to App.jsx designedCourse when checkpoints change
   useEffect(() => {
-    if (!course || !onCourseChange || orderedCheckpoints.length === 0) return;
-    
-    // To avoid infinite loops, we do a simplistic deep check or ignore if the only difference is order,
-    // but the most robust way is to just let the parent control state without bouncing it back continuously.
-    // Instead of deep equal, we stringify a canonical representation (e.g. just IDs, kinds, coords).
-    const draftState = JSON.stringify(courseDraft?.checkpoints?.map(c => ({ id: c.id, kind: c.kind, coords: c.coords, coord: c.coord, crossing: c.crossing, rounding: c.rounding })));
+    if (!course) return;
+
+    const currentState = JSON.stringify(course?.checkpoints?.map(c => ({ id: c.id, kind: c.kind, coords: c.coords, coord: c.coord, crossing: c.crossing, rounding: c.rounding })));
     const orderedState = JSON.stringify(orderedCheckpoints.map(c => ({ id: c.id, kind: c.kind, coords: c.coords, coord: c.coord, crossing: c.crossing, rounding: c.rounding })));
     
-    if (draftState === orderedState) return;
+    if (currentState === orderedState) return;
 
     onCourseChange({
       ...course,
       checkpoints: orderedCheckpoints,
     });
-  }, [course, courseDraft, onCourseChange, orderedCheckpoints]);
+  }, [course, orderedCheckpoints, onCourseChange]);
 
   return (
     <>
