@@ -218,6 +218,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange }) {
   // Telemetry & Offline State
   const [isSimOnline, setIsSimOnline] = useState(true);
   const [offlineQueue, setOfflineQueue] = useState([]);
+  const [syncingQueue, setSyncingQueue] = useState([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncedTime, setLastSyncedTime] = useState(Date.now());
   const lastCapturedPos = useRef(null);
@@ -226,13 +227,13 @@ export default function BoatPwaMain({ courseOverride, onStatusChange }) {
     if (!onStatusChange) return;
     onStatusChange({
       state: isSyncing ? 'syncing' : (isSimOnline ? 'online' : 'buffering'),
-      queueSize: offlineQueue.length,
+      queueSize: offlineQueue.length + syncingQueue.length,
       pointsRecorded: trace.length,
       lastSynced: lastSyncedTime,
       resolution: '± 4.2m',
       collectionStatus: enabled ? 'Active' : 'Paused'
     });
-  }, [isSimOnline, isSyncing, offlineQueue.length, trace.length, lastSyncedTime, enabled, onStatusChange]);
+  }, [isSimOnline, isSyncing, offlineQueue.length, syncingQueue.length, trace.length, lastSyncedTime, enabled, onStatusChange]);
 
   useEffect(() => {
     if (courseOverride) {
@@ -317,8 +318,13 @@ export default function BoatPwaMain({ courseOverride, onStatusChange }) {
                    if (q.length > 0) {
                      // Connection restored! Flush queue.
                      setIsSyncing(true);
-                     setTrace(t => [...t, ...q, newPos]);
-                     setTimeout(() => setIsSyncing(false), 2000); // Show syncing UI for 2s
+                     const pointsToSync = [...q, newPos];
+                     setSyncingQueue(pointsToSync);
+                     setTimeout(() => {
+                       setTrace(t => [...t, ...pointsToSync]);
+                       setSyncingQueue([]);
+                       setIsSyncing(false);
+                     }, 2000); // Show syncing UI for 2s
                      setLastSyncedTime(Date.now());
                      return [];
                    } else {
@@ -431,6 +437,18 @@ export default function BoatPwaMain({ courseOverride, onStatusChange }) {
         <MapControls pos={activePos} autoCenter={autoCenter} setAutoCenter={setAutoCenter} />
         
         <Polyline positions={trace.map(p => [p.lat, p.lng])} color="#33658A" weight={3} opacity={0.6} />
+        {syncingQueue.length > 0 && (
+          <Polyline 
+            positions={(trace.length > 0 ? [trace[trace.length - 1], ...syncingQueue] : syncingQueue).map(p => [p.lat, p.lng])} 
+            color="#EAB308" weight={3} opacity={0.8} 
+          />
+        )}
+        {offlineQueue.length > 0 && (
+          <Polyline 
+            positions={(syncingQueue.length > 0 ? [syncingQueue[syncingQueue.length - 1], ...offlineQueue] : (trace.length > 0 ? [trace[trace.length - 1], ...offlineQueue] : offlineQueue)).map(p => [p.lat, p.lng])} 
+            color="#EF4444" weight={3} opacity={0.8} 
+          />
+        )}
         
         {/* Bearing Line to Active Target */}
         {activePos && targetPos && targetName !== 'FINISHED' && (
