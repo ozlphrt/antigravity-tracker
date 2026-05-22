@@ -392,16 +392,33 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
         minDistanceRef.current = distance;
       }
       
+      let hasRoundedCorrectly = false;
+      const rounding = target.rounding ? target.rounding.toLowerCase() : 'line';
+      
+      if (rounding === 'port') {
+        // Buoy must be on the port (left) side, meaning relativeBearing is negative
+        hasRoundedCorrectly = relativeBearing < -135;
+      } else if (rounding === 'starboard') {
+        // Buoy must be on the starboard (right) side, meaning relativeBearing is positive
+        hasRoundedCorrectly = relativeBearing > 135;
+      } else {
+        hasRoundedCorrectly = Math.abs(relativeBearing) > 135;
+      }
+
       // Clear buoy later: when we are close to the mark (within 300m) and the mark is now passing well behind us
-      // (relative bearing > 135 degrees off the bow), we assume the turn is completed.
-      if (minDistanceRef.current < 0.3 && Math.abs(relativeBearing) > 135) {
+      if (minDistanceRef.current < 0.3 && hasRoundedCorrectly) {
         if (activeTargetIndex < targets.length) {
           setActiveTargetIndex(prev => prev + 1);
           minDistanceRef.current = Infinity; // Reset for next target
         }
       } else if (distance > minDistanceRef.current + 0.1 && minDistanceRef.current < 0.4) {
         // Fallback: Turn completed by sailing away
-        if (activeTargetIndex < targets.length) {
+        // Check if it's on the correct side when sailing away
+        let sideCorrect = true;
+        if (rounding === 'port') sideCorrect = relativeBearing < 0;
+        if (rounding === 'starboard') sideCorrect = relativeBearing > 0;
+        
+        if (sideCorrect && activeTargetIndex < targets.length) {
           setActiveTargetIndex(prev => prev + 1);
           minDistanceRef.current = Infinity; // Reset for next target
         }
