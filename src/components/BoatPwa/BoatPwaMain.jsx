@@ -461,10 +461,11 @@ export default function BoatPwaMain({ courseOverride, onStatusChange }) {
         {course && course.checkpoints.map((cp, idx) => {
           if (cp.type === 'buoy') {
              let iconToUse = buoyIcon;
-             if (cp.id.toUpperCase() === targetName) {
+             const isTarget = cp.id.toUpperCase() === targetName;
+             if (isTarget) {
                iconToUse = cp.rounding.toUpperCase() === 'PORT' ? portTargetIcon : stbdTargetIcon;
              }
-             return <Marker key={idx} position={[cp.coord[0], cp.coord[1]]} icon={iconToUse} />;
+             return <Marker key={idx} position={[cp.coord[0], cp.coord[1]]} icon={iconToUse} opacity={isTarget ? 1 : 0.4} />;
           } else if (cp.type === 'gate') {
              const kind = getCheckpointKind(cp);
              const isTarget = cp.id.toUpperCase() === targetName;
@@ -476,6 +477,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange }) {
                  coords={cp.coords}
                  kind={lineKind}
                  crossing={cp.crossing}
+                 opacity={isTarget ? 1 : 0.4}
                />
              );
           }
