@@ -306,11 +306,13 @@ export default function BoatPwaMain({ courseOverride, onStatusChange }) {
             if (shouldCapture) {
               lastCapturedPos.current = newPos;
               
-              // --- OFFLINE SIMULATION (DEAD ZONES) ---
-              // We define two longitudinal dead zones to simulate losing cellular coverage
+              // We define several dead zones to simulate losing cellular coverage frequently
               const inDeadZone1 = newPos.lng > 27.421 && newPos.lng < 27.426;
               const inDeadZone2 = newPos.lng > 27.433 && newPos.lng < 27.439;
-              const currentlyOnline = !(inDeadZone1 || inDeadZone2);
+              const inDeadZone3 = newPos.lng > 27.412 && newPos.lng < 27.416; // West dead zone
+              const inDeadZone4 = newPos.lng > 27.442 && newPos.lng < 27.446; // East dead zone
+              const inDeadZone5 = newPos.lat > 37.015 && newPos.lat < 37.017 && newPos.lng > 27.426 && newPos.lng < 27.433; // Center cross block
+              const currentlyOnline = !(inDeadZone1 || inDeadZone2 || inDeadZone3 || inDeadZone4 || inDeadZone5);
               
               if (currentlyOnline) {
                  setIsSimOnline(true);
