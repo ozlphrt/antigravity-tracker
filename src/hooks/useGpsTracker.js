@@ -37,6 +37,24 @@ export function useGpsTracker(boatId, enabled) {
 
   // Watch position
   useEffect(() => {
+    let wakeLock = null;
+
+    const requestWakeLock = async () => {
+      if ('wakeLock' in navigator) {
+        try {
+          wakeLock = await navigator.wakeLock.request('screen');
+        } catch (err) {
+          console.log(`Wake Lock error: ${err.name}`);
+        }
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (wakeLock !== null && document.visibilityState === 'visible') {
+        requestWakeLock();
+      }
+    };
+
     if (!enabled) {
       if (watchId.current !== null) {
         navigator.geolocation.clearWatch(watchId.current);
@@ -44,6 +62,10 @@ export function useGpsTracker(boatId, enabled) {
       }
       return;
     }
+
+    // Request wake lock when enabled to keep GPS tracking alive
+    requestWakeLock();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     watchId.current = navigator.geolocation.watchPosition(
       async (pos) => {
@@ -67,6 +89,11 @@ export function useGpsTracker(boatId, enabled) {
     return () => {
       if (watchId.current !== null) {
         navigator.geolocation.clearWatch(watchId.current);
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLock !== null) {
+        wakeLock.release().catch(() => {});
+        wakeLock = null;
       }
     };
   }, [enabled, boatId]);
