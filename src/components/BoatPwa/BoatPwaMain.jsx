@@ -380,10 +380,24 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
       const pt2 = turf.point([tLng, tLat]);
       const distance = turf.distance(pt1, pt2, { units: 'kilometers' });
       
+      const absoluteBearing = turf.bearing(pt1, pt2);
+      let relativeBearing = absoluteBearing - activePos.heading;
+      while (relativeBearing <= -180) relativeBearing += 360;
+      while (relativeBearing > 180) relativeBearing -= 360;
+
       if (distance < minDistanceRef.current) {
         minDistanceRef.current = distance;
+      }
+      
+      // Clear buoy early: when we are close to the mark (within 300m) and the mark is now passing behind us
+      // (relative bearing > 100 degrees off the bow), we assume "75% of the turn is completed".
+      if (minDistanceRef.current < 0.3 && Math.abs(relativeBearing) > 100) {
+        if (activeTargetIndex < targets.length) {
+          setActiveTargetIndex(prev => prev + 1);
+          minDistanceRef.current = Infinity; // Reset for next target
+        }
       } else if (distance > minDistanceRef.current + 0.1 && minDistanceRef.current < 0.4) {
-        // Turn completed: we got within 400m of the mark, and have now sailed 100m away from our closest point!
+        // Fallback: Turn completed by sailing away
         if (activeTargetIndex < targets.length) {
           setActiveTargetIndex(prev => prev + 1);
           minDistanceRef.current = Infinity; // Reset for next target
