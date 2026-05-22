@@ -206,7 +206,7 @@ function BuoyCircles({ targetPos }) {
   );
 }
 
-export default function BoatPwaMain({ courseOverride, onStatusChange }) {
+export default function BoatPwaMain({ courseOverride, onStatusChange, showDots = true }) {
   const [enabled, setEnabled] = useState(true);
   const { position, isOnline, offlineQueueSize } = useGpsTracker('boat-1', enabled);
   const [course, setCourse] = useState(null);
@@ -439,7 +439,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange }) {
         <MapControls pos={activePos} autoCenter={autoCenter} setAutoCenter={setAutoCenter} />
         
         <Polyline positions={trace.map(p => [p.lat, p.lng])} color="#33658A" weight={3} opacity={0.6} />
-        {trace.map((p, idx) => (
+        {showDots && trace.map((p, idx) => (
           <CircleMarker key={`trace-${idx}`} center={[p.lat, p.lng]} radius={3} color="#33658A" fillColor="#33658A" fillOpacity={1} stroke={false} />
         ))}
         
@@ -449,7 +449,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange }) {
               positions={(trace.length > 0 ? [trace[trace.length - 1], ...syncingQueue] : syncingQueue).map(p => [p.lat, p.lng])} 
               color="#EAB308" weight={3} opacity={0.8} 
             />
-            {syncingQueue.map((p, idx) => (
+            {showDots && syncingQueue.map((p, idx) => (
               <CircleMarker key={`sync-${idx}`} center={[p.lat, p.lng]} radius={3} color="#EAB308" fillColor="#EAB308" fillOpacity={1} stroke={false} />
             ))}
           </React.Fragment>
@@ -461,7 +461,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange }) {
               positions={(syncingQueue.length > 0 ? [syncingQueue[syncingQueue.length - 1], ...offlineQueue] : (trace.length > 0 ? [trace[trace.length - 1], ...offlineQueue] : offlineQueue)).map(p => [p.lat, p.lng])} 
               color="#EF4444" weight={3} opacity={0.8} 
             />
-            {offlineQueue.map((p, idx) => (
+            {showDots && offlineQueue.map((p, idx) => (
               <CircleMarker key={`off-${idx}`} center={[p.lat, p.lng]} radius={3} color="#EF4444" fillColor="#EF4444" fillOpacity={1} stroke={false} />
             ))}
           </React.Fragment>

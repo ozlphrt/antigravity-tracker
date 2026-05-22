@@ -13,6 +13,7 @@ function App() {
   const [boatStatus, setBoatStatus] = useState({ state: 'online', queueSize: 0, pointsRecorded: 0, lastSynced: null, resolution: '± 4.2m', collectionStatus: 'Active' });
   const [designedCourse, setDesignedCourse] = useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [showDots, setShowDots] = useState(true);
 
   const statusLabel = boatStatus.state === 'syncing'
     ? 'SYNCING...'
@@ -67,7 +68,7 @@ function App() {
       
       <main className={activeModule === 'committee' ? 'rc-main' : 'crew-main'}>
         {activeModule === 'boat' ? (
-          <BoatPwaMain courseOverride={designedCourse} onStatusChange={setBoatStatus} />
+          <BoatPwaMain courseOverride={designedCourse} onStatusChange={setBoatStatus} showDots={showDots} />
         ) : (
           <CommitteeMain courseDraft={designedCourse} onCourseChange={setDesignedCourse} />
         )}
@@ -114,6 +115,15 @@ function App() {
                 <span style={{ fontWeight: 600 }}>
                   {boatStatus.lastSynced ? new Date(boatStatus.lastSynced).toLocaleTimeString() : 'Never'}
                 </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: '8px', alignItems: 'center' }}>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Show Track Dots</span>
+                <label style={{ position: 'relative', display: 'inline-block', width: '40px', height: '22px' }}>
+                  <input type="checkbox" checked={showDots} onChange={() => setShowDots(!showDots)} style={{ opacity: 0, width: 0, height: 0 }} />
+                  <span style={{ position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: showDots ? 'var(--accent-blue)' : '#cbd5e1', transition: '.4s', borderRadius: '22px' }}>
+                    <span style={{ position: 'absolute', content: '""', height: '18px', width: '18px', left: '2px', bottom: '2px', backgroundColor: 'white', transition: '.4s', borderRadius: '50%', transform: showDots ? 'translateX(18px)' : 'translateX(0)' }}></span>
+                  </span>
+                </label>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>App Version</span>
