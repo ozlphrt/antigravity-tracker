@@ -323,7 +323,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
                      const pointsToSync = [...q, newPos];
                      setSyncingQueue(pointsToSync);
                      setTimeout(() => {
-                       setTrace(t => [...t, ...pointsToSync]);
+                       setTrace(t => [...t, ...pointsToSync].sort((a, b) => a.timestamp - b.timestamp));
                        setSyncingQueue([]);
                        setIsSyncing(false);
                      }, 2000); // Show syncing UI for 2s
