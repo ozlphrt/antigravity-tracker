@@ -1017,7 +1017,7 @@ main {
   }
 
   .helm-dashboard {
-    bottom: max(10px, env(safe-area-inset-bottom));
+    bottom: max(35px, calc(25px + env(safe-area-inset-bottom)));
     width: calc(100% - 20px);
   }
 }
