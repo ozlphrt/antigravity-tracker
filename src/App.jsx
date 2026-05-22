@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Settings, Satellite, X } from 'lucide-react';
+import pkg from '../package.json';
 import './index.css';
 
 // Mock components to be implemented
@@ -105,11 +106,15 @@ function App() {
                 <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Points Recorded</span>
                 <span style={{ fontWeight: 600 }}>{boatStatus.pointsRecorded || 0}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid #E2E8F0' }}>
                 <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Last Synced</span>
                 <span style={{ fontWeight: 600 }}>
                   {boatStatus.lastSynced ? new Date(boatStatus.lastSynced).toLocaleTimeString() : 'Never'}
                 </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>App Version</span>
+                <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>v{pkg.version}</span>
               </div>
             </div>
           </div>
