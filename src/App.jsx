@@ -54,16 +54,14 @@ function App() {
           >
             RC
           </button>
-          {activeModule === 'boat' && (
-            <button 
-              className="icon-action" 
-              style={{ padding: '6px', marginLeft: '4px' }}
-              onClick={() => setIsSettingsOpen(true)}
-              aria-label="Settings"
-            >
-              <Settings size={20} color="var(--text-secondary)" />
-            </button>
-          )}
+          <button 
+            className="icon-action" 
+            style={{ padding: '6px', marginLeft: '4px' }}
+            onClick={() => setIsSettingsOpen(true)}
+            aria-label="Settings"
+          >
+            <Settings size={20} color="var(--text-secondary)" />
+          </button>
         </div>
       </header>
       
@@ -77,7 +75,7 @@ function App() {
 
       <ReloadPrompt />
 
-      {isSettingsOpen && activeModule === 'boat' && (
+      {isSettingsOpen && (
         <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div className="modal-content" style={{ background: 'white', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '350px', boxShadow: 'var(--shadow-xl)' }}>
             <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
