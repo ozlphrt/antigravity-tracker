@@ -219,15 +219,20 @@ export default function BoatPwaMain({ courseOverride, onStatusChange }) {
   const [isSimOnline, setIsSimOnline] = useState(true);
   const [offlineQueue, setOfflineQueue] = useState([]);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncedTime, setLastSyncedTime] = useState(Date.now());
   const lastCapturedPos = useRef(null);
 
   useEffect(() => {
     if (!onStatusChange) return;
     onStatusChange({
       state: isSyncing ? 'syncing' : (isSimOnline ? 'online' : 'buffering'),
-      queueSize: offlineQueue.length
+      queueSize: offlineQueue.length,
+      pointsRecorded: trace.length,
+      lastSynced: lastSyncedTime,
+      resolution: '± 4.2m',
+      collectionStatus: enabled ? 'Active' : 'Paused'
     });
-  }, [isSimOnline, isSyncing, offlineQueue.length, onStatusChange]);
+  }, [isSimOnline, isSyncing, offlineQueue.length, trace.length, lastSyncedTime, enabled, onStatusChange]);
 
   useEffect(() => {
     if (courseOverride) {
@@ -314,9 +319,11 @@ export default function BoatPwaMain({ courseOverride, onStatusChange }) {
                      setIsSyncing(true);
                      setTrace(t => [...t, ...q, newPos]);
                      setTimeout(() => setIsSyncing(false), 2000); // Show syncing UI for 2s
+                     setLastSyncedTime(Date.now());
                      return [];
                    } else {
                      setTrace(t => [...t, newPos]);
+                     setLastSyncedTime(Date.now());
                      return q;
                    }
                  });

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Settings, Satellite, X } from 'lucide-react';
 import './index.css';
 
 // Mock components to be implemented
@@ -7,8 +8,9 @@ import CommitteeMain from './components/Committee/CommitteeMain';
 
 function App() {
   const [activeModule, setActiveModule] = useState('boat'); // 'boat' or 'committee'
-  const [boatStatus, setBoatStatus] = useState({ state: 'online', queueSize: 0 });
+  const [boatStatus, setBoatStatus] = useState({ state: 'online', queueSize: 0, pointsRecorded: 0, lastSynced: null, resolution: '± 4.2m', collectionStatus: 'Active' });
   const [designedCourse, setDesignedCourse] = useState(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const statusLabel = boatStatus.state === 'syncing'
     ? 'SYNCING...'
@@ -48,6 +50,16 @@ function App() {
           >
             RC
           </button>
+          {activeModule === 'boat' && (
+            <button 
+              className="icon-action" 
+              style={{ padding: '6px', marginLeft: '4px' }}
+              onClick={() => setIsSettingsOpen(true)}
+              aria-label="Settings"
+            >
+              <Settings size={20} color="var(--text-secondary)" />
+            </button>
+          )}
         </div>
       </header>
       
@@ -58,6 +70,51 @@ function App() {
           <CommitteeMain courseDraft={designedCourse} onCourseChange={setDesignedCourse} />
         )}
       </main>
+
+      {isSettingsOpen && activeModule === 'boat' && (
+        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div className="modal-content" style={{ background: 'white', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '350px', boxShadow: 'var(--shadow-xl)' }}>
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Satellite size={24} color="var(--accent-blue)" />
+                <h3 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-primary)' }}>Telemetry</h3>
+              </div>
+              <button type="button" className="icon-action" onClick={() => setIsSettingsOpen(false)}>
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: '8px' }}>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>GPS Resolution</span>
+                <span style={{ fontWeight: 600 }}>{boatStatus.resolution}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: '8px' }}>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Data Collection</span>
+                <span style={{ fontWeight: 600, color: boatStatus.collectionStatus === 'Active' ? 'var(--accent-green)' : 'var(--text-primary)' }}>
+                  {boatStatus.collectionStatus}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: '8px' }}>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Sync State</span>
+                <span style={{ fontWeight: 600 }}>
+                  {boatStatus.state === 'online' ? 'Online' : (boatStatus.state === 'syncing' ? 'Syncing...' : `Offline (${boatStatus.queueSize} buffered)`)}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: '8px' }}>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Points Recorded</span>
+                <span style={{ fontWeight: 600 }}>{boatStatus.pointsRecorded || 0}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px' }}>
+                <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Last Synced</span>
+                <span style={{ fontWeight: 600 }}>
+                  {boatStatus.lastSynced ? new Date(boatStatus.lastSynced).toLocaleTimeString() : 'Never'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
