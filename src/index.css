@@ -407,17 +407,17 @@ main {
 }
 
 .checkpoint-item {
-  min-height: 64px;
+  min-height: 48px;
   border: 2px solid transparent;
-  border-radius: 12px;
-  padding: 10px 12px;
+  border-radius: 10px;
+  padding: 6px 8px;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   background: #FFFFFF;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .checkpoint-item.selected {
@@ -493,10 +493,31 @@ main {
 
 .rounding-pill {
   border-radius: 999px;
-  padding: 4px 8px;
-  font-size: 0.66rem;
+  padding: 3px 7px;
+  font-size: 0.64rem;
   font-weight: 800;
   line-height: 1;
+  flex-shrink: 0;
+}
+
+.checkpoint-icon-action {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.checkpoint-icon-action:hover {
+  color: var(--danger-red);
+  background: #FEF2F2;
 }
 
 .rounding-pill.port {
@@ -930,19 +951,19 @@ main {
   }
 
   .checkpoint-item {
-    min-height: 44px;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    padding: 6px 8px;
+    min-height: 40px;
+    padding: 5px 6px;
+    gap: 3px;
   }
 
   .checkpoint-select {
-    grid-template-columns: 26px minmax(0, 1fr);
-    gap: 8px;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 6px;
   }
 
   .checkpoint-marker {
-    width: 26px;
-    height: 26px;
+    width: 24px;
+    height: 24px;
   }
 
   .checkpoint-summary strong {

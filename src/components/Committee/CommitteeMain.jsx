@@ -208,11 +208,11 @@ function SortableCheckpointItem({ checkpoint, selectedCheckpoint, selectCheckpoi
   return (
     <li ref={setNodeRef} style={style} className={`checkpoint-item ${selectedCheckpoint?.id === checkpoint.id ? 'selected' : ''}`}>
       {checkpoint.kind !== 'start' && checkpoint.kind !== 'finish' ? (
-        <div className="drag-handle" {...attributes} {...listeners} style={{ padding: '0 8px 0 0', cursor: 'grab', touchAction: 'none', display: 'flex', alignItems: 'center' }}>
-          <Menu size={32} color="#64748b" />
+        <div className="drag-handle" {...attributes} {...listeners} style={{ padding: '0 4px 0 0', cursor: 'grab', touchAction: 'none', display: 'flex', alignItems: 'center' }}>
+          <Menu size={20} color="#94a3b8" />
         </div>
       ) : (
-        <div style={{ padding: '0 8px 0 0', width: '32px', boxSizing: 'content-box', display: 'flex', alignItems: 'center' }}></div>
+        <div style={{ padding: '0 4px 0 0', width: '20px', boxSizing: 'content-box', display: 'flex', alignItems: 'center' }}></div>
       )}
 
       <button
@@ -256,27 +256,27 @@ function SortableCheckpointItem({ checkpoint, selectedCheckpoint, selectCheckpoi
         </button>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
         {selectedCheckpoint?.id === checkpoint.id && (
           <button
             type="button"
-            className="icon-action"
+            className="icon-action checkpoint-icon-action"
             title={`Edit Coordinates for ${checkpoint.id}`}
             onClick={(e) => {
               e.stopPropagation();
               onEditCoordinates();
             }}
           >
-            <Crosshair size={24} />
+            <Crosshair size={16} />
           </button>
         )}
         <button
           type="button"
-          className="icon-action"
+          className="icon-action checkpoint-icon-action"
           title={`Remove ${checkpoint.id}`}
           onClick={() => removeCheckpoint(checkpoint.id)}
         >
-          <Trash2 size={24} />
+          <Trash2 size={16} />
         </button>
       </div>
     </li>
