@@ -223,8 +223,8 @@ main {
 /* Simulator controls */
 .simulator-panel {
   position: absolute;
-  top: 15px;
-  left: 15px;
+  bottom: 130px;
+  right: 15px;
   z-index: 1000;
   width: auto;
   padding: 12px;
@@ -1009,8 +1009,10 @@ main {
   }
 
   .simulator-panel {
-    top: 10px;
-    left: 10px;
+    bottom: 120px;
+    right: 10px;
+    top: auto;
+    left: auto;
     padding: 8px;
   }
 
