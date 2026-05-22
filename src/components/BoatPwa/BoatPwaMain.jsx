@@ -22,6 +22,27 @@ const createRotatedBoatIcon = (heading) => {
   });
 };
 
+const finishBuoyIcon = new L.DivIcon({
+  html: `<div style="background-color: var(--success-green); width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: var(--shadow-sm);"></div>`,
+  className: '',
+  iconSize: [14, 14],
+  iconAnchor: [7, 7]
+});
+
+function MapInvalidator() {
+  const map = useMap();
+  useEffect(() => {
+    // Force a resize check immediately and after a short delay
+    // This fixes Leaflet gray/cutoff tile issues on mobile initialization
+    map.invalidateSize();
+    const timeoutId = setTimeout(() => {
+      map.invalidateSize();
+    }, 400);
+    return () => clearTimeout(timeoutId);
+  }, [map]);
+  return null;
+}
+
 const buoyIcon = new L.DivIcon({
   html: `<div style="width: 18px; height: 18px; border-radius: 50%; background: #F26419; border: 3px solid #fff; box-shadow: 0 2px 5px rgba(15,23,42,0.25);"></div>`,
   className: '',
@@ -506,8 +527,8 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
           attribution="&copy; OpenStreetMap contributors &copy; CARTO"
         />
+        <MapInvalidator />
         <MapControls pos={activePos} autoCenter={autoCenter} setAutoCenter={setAutoCenter} />
-        
         <Polyline positions={trace.map(p => [p.lat, p.lng])} color="#33658A" weight={3} opacity={0.6} />
         {showDots && trace.map((p, idx) => (
           <CircleMarker key={`trace-${idx}`} center={[p.lat, p.lng]} radius={3} color="#33658A" fillColor="#33658A" fillOpacity={1} stroke={false} />

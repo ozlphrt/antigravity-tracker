@@ -52,6 +52,25 @@ const createRoundingBuoyIcon = (rounding, id = '') => {
   });
 };
 
+const buoyIcon = new L.DivIcon({
+  html: `<div style="width: 14px; height: 14px; border-radius: 50%; background: #F26419; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`,
+  className: '',
+  iconSize: [14, 14],
+  iconAnchor: [7, 7]
+});
+
+function MapInvalidator() {
+  const map = useMap();
+  useEffect(() => {
+    map.invalidateSize();
+    const timeoutId = setTimeout(() => {
+      map.invalidateSize();
+    }, 400);
+    return () => clearTimeout(timeoutId);
+  }, [map]);
+  return null;
+}
+
 const tempPointIcon = new L.DivIcon({
   html: '<div class="temp-point-marker"></div>',
   className: '',
@@ -560,9 +579,9 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
         <MapContainer center={[37.015, 27.420]} zoom={13} style={{ width: '100%', height: '100%' }}>
           <TileLayer
             url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-            attribution="&copy; OpenStreetMap &copy; CARTO"
+            attribution='&copy; <a href="https://carto.com/">CARTO</a>'
           />
-
+          <MapInvalidator />
           <CourseClickHandler activeTool={activeTool} onPlacePoint={handleMapPoint} />
           <SelectedObjectFocus
             selectedCheckpointId={selectedCheckpointId}
