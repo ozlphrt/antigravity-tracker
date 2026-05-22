@@ -1147,12 +1147,17 @@ main {
   justify-content: center;
 }
 
-.dir-buttons button.steer-btn:hover {
-  transform: scale(1.15);
+.steer-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-.dir-buttons button.steer-btn:active {
-  transform: scale(0.9);
+.steer-label {
+  margin-top: 2px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 /* Animated Arrow */
