@@ -212,7 +212,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
   const [course, setCourse] = useState(null);
   const [simulatedPos, setSimulatedPos] = useState({ lat: 37.0255, lng: 27.4325, heading: 180, targetHeading: 180, speed: 6.0, timeMultiplier: 20 });
   const [trace, setTrace] = useState([]);
-  const [autoCenter, setAutoCenter] = useState(false);
+  const [autoCenter, setAutoCenter] = useState(true);
   const [activeTargetIndex, setActiveTargetIndex] = useState(0);
 
   // Telemetry & Offline State
