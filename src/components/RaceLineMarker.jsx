@@ -19,6 +19,7 @@ export default function RaceLineMarker({
   preview = false,
   showArrows = true,
   opacity = 1,
+  eventHandlers,
 }) {
   const map = useMap();
   const [pixelWidth, setPixelWidth] = useState(240);
@@ -49,6 +50,7 @@ export default function RaceLineMarker({
       interactive={interactive}
       zIndexOffset={zIndexOffset}
       opacity={opacity}
+      eventHandlers={eventHandlers}
     />
   );
 }

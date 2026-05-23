@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Circle, CircleMarker, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import * as turf from '@turf/turf';
-import { Navigation, LocateFixed, Maximize, Plus, Minus } from 'lucide-react';
+import { Navigation, LocateFixed, Maximize, Plus, Minus, X } from 'lucide-react';
 import { useGpsTracker } from '../../hooks/useGpsTracker';
 import { supabase } from '../../database/mockSupabase';
 import RaceLineMarker from '../RaceLineMarker';
@@ -245,6 +245,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
   const lastCapturedPos = useRef(null);
   
   const [hasFinished, setHasFinished] = useState(false);
+  const [isRaceFinishedModalOpen, setIsRaceFinishedModalOpen] = useState(false);
   const [hasDownloadedRoute, setHasDownloadedRoute] = useState(false);
 
   useEffect(() => {
@@ -524,7 +525,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
       downloadAnchorNode.click();
       downloadAnchorNode.remove();
       
-      alert("Race finished! All coordinates successfully uploaded and the route has been saved locally.");
+      setIsRaceFinishedModalOpen(true);
     }
   }, [hasFinished, hasDownloadedRoute, offlineQueue.length, syncingQueue.length, trace]);
 
@@ -644,9 +645,9 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
                 </defs>
                 <polygon points="85,15 85,85 15,50" fill="url(#redPlastic)" stroke="#7f1d1d" strokeWidth="2" strokeLinejoin="round" />
                 <polygon points="82,20 82,80 22,50" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="3" strokeLinejoin="round" />
+                <text x="52%" y="55%" textAnchor="middle" fill="white" fontSize="28" fontWeight="bold" dy="0.3em">10</text>
               </svg>
             </button>
-            <div className="steer-label">-10</div>
           </div>
           <div className="steer-wrapper">
             <button
@@ -664,9 +665,9 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
                 </defs>
                 <polygon points="15,15 15,85 85,50" fill="url(#greenPlastic)" stroke="#14532d" strokeWidth="2" strokeLinejoin="round" />
                 <polygon points="18,20 18,80 78,50" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="3" strokeLinejoin="round" />
+                <text x="48%" y="55%" textAnchor="middle" fill="white" fontSize="28" fontWeight="bold" dy="0.3em">10</text>
               </svg>
             </button>
-            <div className="steer-label">+10</div>
           </div>
         </div>
       </div>
@@ -694,6 +695,21 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           </div>
         </div>
       </div>
+    {isRaceFinishedModalOpen && (
+  <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+    <div className="modal-content" style={{ background: 'white', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '350px', boxShadow: 'var(--shadow-xl)' }}>
+      <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h3 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-primary)' }}>Race Finished</h3>
+        <button type="button" className="icon-action" onClick={() => setIsRaceFinishedModalOpen(false)}>
+          <X size={24} />
+        </button>
+      </div>
+      <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <p>All coordinates successfully uploaded and the route has been saved locally.</p>
+      </div>
     </div>
+  </div>
+)}
+</div>
   );
 }
