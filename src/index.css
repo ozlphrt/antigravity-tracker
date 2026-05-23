@@ -617,13 +617,14 @@ main {
 
 
 .course-connecting-line {
-  stroke-dasharray: 6 8;
-  animation: course-line-flow 1s linear infinite;
+  stroke-dasharray: 12 14;
+  animation: course-line-flow 1.2s linear infinite;
+  filter: drop-shadow(0 2px 4px rgba(51, 101, 138, 0.4));
 }
 
 @keyframes course-line-flow {
   to {
-    stroke-dashoffset: -14;
+    stroke-dashoffset: -26;
   }
 }
 
@@ -913,28 +914,32 @@ main {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px 8px;
+  padding: 14px 16px 12px;
   cursor: pointer;
   flex-shrink: 0;
   user-select: none;
+  background: #EFF6FF;
+  border-radius: 20px 20px 0 0;
+  border-bottom: 1px solid rgba(51, 101, 138, 0.08);
 }
 
 .rc-bottom-sheet-handle {
-  width: 36px;
-  height: 4px;
+  width: 48px;
+  height: 5px;
   border-radius: 99px;
-  background: #CBD5E1;
+  background: var(--accent-blue);
+  opacity: 0.6;
   margin: 0 auto 6px;
   position: absolute;
   left: 50%;
-  top: 10px;
+  top: 6px;
   transform: translateX(-50%);
 }
 
 .rc-bottom-sheet-title {
-  font-size: 0.78rem;
+  font-size: 0.85rem;
   font-weight: 800;
-  color: var(--text-primary);
+  color: var(--accent-blue);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }

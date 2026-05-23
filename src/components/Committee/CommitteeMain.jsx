@@ -238,8 +238,8 @@ function CourseConnectingLine({ checkpoints }) {
       positions={positions}
       pathOptions={{
         color: '#33658A',
-        weight: 2,
-        opacity: 0.55,
+        weight: 4,
+        opacity: 0.85,
         className: 'course-connecting-line'
       }}
     />
