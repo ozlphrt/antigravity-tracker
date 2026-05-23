@@ -240,6 +240,7 @@ function CourseConnectingLine({ checkpoints }) {
         color: '#33658A',
         weight: 4,
         opacity: 0.85,
+        dashArray: '12, 14',
         className: 'course-connecting-line'
       }}
     />

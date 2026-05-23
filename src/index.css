@@ -617,7 +617,6 @@ main {
 
 
 .course-connecting-line {
-  stroke-dasharray: 12 14;
   animation: course-line-flow 1.2s linear infinite;
   filter: drop-shadow(0 2px 4px rgba(51, 101, 138, 0.4));
 }
