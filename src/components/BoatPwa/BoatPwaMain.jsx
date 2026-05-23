@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Circle, CircleMarker, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import * as turf from '@turf/turf';
-import { Navigation, LocateFixed, Maximize, Plus, Minus, X } from 'lucide-react';
+import { Navigation, LocateFixed, Maximize, Plus, Minus, X, CircleDot, CornerUpLeft, CornerUpRight } from 'lucide-react';
 import { useGpsTracker } from '../../hooks/useGpsTracker';
 import { supabase } from '../../database/mockSupabase';
 import RaceLineMarker from '../RaceLineMarker';
@@ -674,9 +674,13 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
 
       <div className="helm-dashboard glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         <div style={{ width: '100%' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', alignItems: 'center' }}>
             <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>HEADING</span>
-            <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--accent-coral)' }}>TARGET: {targetName} ({targetRounding})</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: 900, color: 'var(--accent-coral)', display: 'flex', alignItems: 'center' }}>
+              <CircleDot size={14} strokeWidth={3} style={{ marginRight: '4px' }} /> {targetName}
+              {targetRounding === 'PORT' && <CornerUpLeft size={16} strokeWidth={3} style={{ marginLeft: '4px' }} title="Port Rounding" />}
+              {targetRounding === 'STARBOARD' && <CornerUpRight size={16} strokeWidth={3} style={{ marginLeft: '4px' }} title="Starboard Rounding" />}
+            </span>
           </div>
           <TapeCompass heading={activePos.heading} targetBearing={targetBearing} />
         </div>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { CircleDot } from 'lucide-react';
 
 const TapeCompass = ({ heading, targetBearing }) => {
   const width = 340;
@@ -85,28 +86,27 @@ const TapeCompass = ({ heading, targetBearing }) => {
         if (diff > 180) diff -= 360;
         if (diff < -180) diff += 360;
         
-        const isClamped = Math.abs(diff) > 42;
-        // Clamp to +/- 42 degrees
-        const clampedDiff = Math.max(-42, Math.min(42, diff));
-        const left = (clampedDiff * pixelsPerDegree) + (width / 2);
+        const rawLeft = (diff * pixelsPerDegree) + (width / 2);
+        
+        // Clamp physically to the container bounds (e.g. 12px from edges)
+        const isClamped = rawLeft < 12 || rawLeft > width - 12;
+        const left = Math.max(12, Math.min(width - 12, rawLeft));
         
         return (
           <div style={{
             position: 'absolute',
             left: `${left}px`,
-            top: '0',
+            top: '12px',
             transform: 'translateX(-50%)',
             color: 'var(--accent-coral)',
-            opacity: isClamped ? 0.5 : 1.0,
+            opacity: isClamped ? 0.6 : 1.0,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             zIndex: 10,
             transition: 'left 0.2s ease-out, opacity 0.2s ease'
           }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2L22 20L12 17L2 20L12 2Z" />
-            </svg>
+            <CircleDot size={18} strokeWidth={3} />
           </div>
         );
       })()}
