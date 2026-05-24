@@ -420,9 +420,14 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           } else {
              const ptA = turf.point([target.coords[0][1], target.coords[0][0]]);
              const ptB = turf.point([target.coords[1][1], target.coords[1][0]]);
-             const lineBearing = turf.bearing(ptA, ptB);
              const crossingSide = target.crossing || 'up';
-             const arrowBearing = lineBearing + (crossingSide === 'up' ? -90 : 90);
+             let arrowBearing = 0;
+             if (crossingSide === 'center') {
+               arrowBearing = target.rotationDeg || 0;
+             } else {
+               const lineBearing = turf.bearing(ptA, ptB);
+               arrowBearing = lineBearing + (crossingSide === 'up' ? -90 : 90);
+             }
              
              // Approach point is 50m "behind" the line midpoint
              const reverseArrowBearing = (arrowBearing + 180) % 360;
@@ -472,9 +477,15 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
         
         const ptA = turf.point([startLine.coords[0][1], startLine.coords[0][0]]);
         const ptB = turf.point([startLine.coords[1][1], startLine.coords[1][0]]);
-        const lineBearing = turf.bearing(ptA, ptB);
+        
         const crossingSide = startLine.crossing || 'up';
-        const arrowBearing = lineBearing + (crossingSide === 'up' ? -90 : 90);
+        let arrowBearing = 0;
+        if (crossingSide === 'center') {
+          arrowBearing = startLine.rotationDeg || 0;
+        } else {
+          const lineBearing = turf.bearing(ptA, ptB);
+          arrowBearing = lineBearing + (crossingSide === 'up' ? -90 : 90);
+        }
         
         const reverseBearing = (arrowBearing + 180) % 360;
         const spawnPt = turf.destination(startPt, 0.3, reverseBearing, { units: 'kilometers' });

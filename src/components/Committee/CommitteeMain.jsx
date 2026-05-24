@@ -435,22 +435,18 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
       const sLng = (startLine.coords[0][1] + startLine.coords[1][1]) / 2;
       const startPt = turf.point([sLng, sLat]);
       
-      let courseBearing = 0; // default North if no next mark
-      const nextMark = targets[startIdx + 1];
-      if (nextMark) {
-        let nLat, nLng;
-        if (nextMark.kind === 'buoy' && nextMark.coord) {
-          nLat = nextMark.coord[0]; nLng = nextMark.coord[1];
-        } else if (nextMark.coords) {
-          nLat = (nextMark.coords[0][0] + nextMark.coords[1][0]) / 2;
-          nLng = (nextMark.coords[0][1] + nextMark.coords[1][1]) / 2;
-        }
-        if (nLat !== undefined && nLng !== undefined) {
-           courseBearing = turf.bearing(startPt, turf.point([nLng, nLat]));
-        }
+      let arrowBearing = 0;
+      if (startLine.crossing === 'center') {
+        arrowBearing = startLine.rotationDeg || 0;
+      } else {
+        const ptA = turf.point([startLine.coords[0][1], startLine.coords[0][0]]);
+        const ptB = turf.point([startLine.coords[1][1], startLine.coords[1][0]]);
+        const lineBearing = turf.bearing(ptA, ptB);
+        const crossingSide = startLine.crossing || 'up';
+        arrowBearing = lineBearing + (crossingSide === 'up' ? -90 : 90);
       }
       
-      const reverseBearing = (courseBearing + 180) % 360;
+      const reverseBearing = (arrowBearing + 180) % 360;
       const spawnPt = turf.destination(startPt, 0.4, reverseBearing, { units: 'kilometers' }); // 400m behind start line
       const [spawnLng, spawnLat] = spawnPt.geometry.coordinates;
       
