@@ -69,8 +69,8 @@ const createRoundingBuoyIcon = (rounding, id = '') => {
 const lineEndpointHitIcon = (isActive) => new L.DivIcon({
   html: `<div class="line-endpoint-hit${isActive ? ' is-active' : ''}"></div>`,
   className: 'line-endpoint-hit-shell',
-  iconSize: [32, 32],
-  iconAnchor: [16, 16],
+  iconSize: [48, 48],
+  iconAnchor: [24, 24],
 });
 
 const createLineIdLabelIcon = (label, isSelected) => new L.DivIcon({

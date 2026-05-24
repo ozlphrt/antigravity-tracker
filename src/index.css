@@ -1002,6 +1002,7 @@ main {
 .line-endpoint-hit-shell {
   background: transparent;
   border: none;
+  touch-action: none;
 }
 
 .line-endpoint-hit-shell.leaflet-marker-draggable {
@@ -1013,8 +1014,8 @@ main {
 }
 
 .line-endpoint-hit {
-  width: 32px;
-  height: 32px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   background: transparent;
 }

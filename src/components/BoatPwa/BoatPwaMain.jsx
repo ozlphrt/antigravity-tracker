@@ -437,7 +437,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
              if (distToApproach > 0.06) {
                desiredBearing = turf.bearing(boatPt, approachPt);
              } else {
-               desiredBearing = turf.bearing(boatPt, tPt);
+               desiredBearing = arrowBearing;
              }
           }
         }
