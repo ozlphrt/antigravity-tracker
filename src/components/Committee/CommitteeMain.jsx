@@ -481,6 +481,24 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     onCourseChange({ ...(course || { id: 'live-draft', name: 'Draft Course' }), checkpoints: draftCheckpoints });
   }, [course, draftCheckpoints, onCourseChange]);
 
+  // ── Fit Bounds on Course Load/Save ──
+  useEffect(() => {
+    if (!course || !course.checkpoints || course.checkpoints.length === 0) return;
+    const fit = () => {
+      if (!mapRef.current) return;
+      const pts = [];
+      course.checkpoints.forEach(cp => {
+        if (cp.coord) pts.push(cp.coord);
+        if (cp.coords) { pts.push(cp.coords[0]); pts.push(cp.coords[1]); }
+      });
+      if (pts.length > 0) {
+        mapRef.current.fitBounds(pts, { padding: [50, 50], animate: true, maxZoom: 16 });
+      }
+    };
+    if (mapRef.current) fit();
+    else setTimeout(fit, 300);
+  }, [course]);
+
   // ── Selection ──
   const selectCheckpoint = useCallback((id, endpointIndex = null) => {
     setSelectedCheckpointId(id);
