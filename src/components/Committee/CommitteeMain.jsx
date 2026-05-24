@@ -710,7 +710,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                 <FolderOpen size={18} color="#475569" /> Open Course
               </button>
               <button type="button" onClick={() => { setFabOpen(false); setIsSaveModalVisible(true); }}>
-                <Save size={18} color="#475569" /> Save / Finish
+                <Save size={18} color="#475569" /> Save / Done
               </button>
             </div>
           )}
