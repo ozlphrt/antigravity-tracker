@@ -14,13 +14,25 @@ class MockSupabase {
     const defaultCourse = {
       id: 'course-1',
       name: 'Bodrum Bay Offshore',
-      checkpoints: []
+      checkpoints: [
+        { id: 'start', type: 'start', coord: [37.0255, 27.4325], width: 100, rotationDeg: 270, crossing: 'center' },
+        { id: 'buoy-1', type: 'buoy', coord: [37.010, 27.400], rounding: 'port' },
+        { id: 'buoy-2', type: 'buoy', coord: [36.995, 27.450], rounding: 'starboard' },
+        { id: 'finish', type: 'finish', coord: [37.0255, 27.4325], width: 100, rotationDeg: 270, crossing: 'center' }
+      ]
     };
 
     const storedCourses = localStorage.getItem('rc_courses');
     if (storedCourses) {
       try {
-        this.db.courses = JSON.parse(storedCourses);
+        const parsed = JSON.parse(storedCourses);
+        // Force upgrade course-1 if it was saved with empty checkpoints
+        const c1Index = parsed.findIndex(c => c.id === 'course-1');
+        if (c1Index >= 0 && parsed[c1Index].checkpoints.length === 0) {
+          parsed[c1Index] = defaultCourse;
+          localStorage.setItem('rc_courses', JSON.stringify(parsed));
+        }
+        this.db.courses = parsed;
       } catch (e) {
         this.db.courses = [defaultCourse];
       }
