@@ -83,7 +83,29 @@ const createSeamarkIcon = (tags, currentZoom) => {
   });
 };
 
-// Removed global seamarkIcon
+const overpassEndpoints = [
+  'https://overpass-api.de/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter'
+];
+
+async function fetchWithFallbacks(query) {
+  for (const endpoint of overpassEndpoints) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(query)
+      });
+      if (response.ok) return await response.json();
+      console.warn(`Overpass API error ${response.status} from ${endpoint}`);
+    } catch (err) {
+      console.warn(`Fetch failed for ${endpoint}`, err);
+    }
+  }
+  throw new Error('All Overpass API endpoints failed');
+}
+
 export default function InteractiveSeamarksLayer() {
   const [nodes, setNodes] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -168,17 +190,7 @@ export default function InteractiveSeamarksLayer() {
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const response = await fetch('https://overpass-api.de/api/interpreter', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-          },
-          body: 'data=' + encodeURIComponent(query)
-        });
-        
-        if (!response.ok) throw new Error('Overpass API error ' + response.status);
-        
-        const data = await response.json();
+        const data = await fetchWithFallbacks(query);
         setNodes(data.elements || []);
         lastFetchedBoundsRef.current = paddedBounds;
       } catch (err) {
@@ -218,12 +230,7 @@ export default function InteractiveSeamarksLayer() {
         );
         out center;
       `;
-      fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'data=' + encodeURIComponent(query)
-      })
-      .then(res => res.ok ? res.json() : Promise.reject('Overpass error ' + res.status))
+      fetchWithFallbacks(query)
       .then(data => {
         const fetchedNodes = data.elements || [];
         setNodes(fetchedNodes);
