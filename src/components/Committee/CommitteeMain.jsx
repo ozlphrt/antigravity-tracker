@@ -553,7 +553,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
         return next;
       });
     }
-  }, [selectCheckpoint]);
+  }, [selectCheckpoint, draftCheckpoints]);
 
   // ── Mutation helpers ──
   const updateRounding = (id, rounding) =>
@@ -652,13 +652,11 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     supabase.getCourses().then((courses) => {
       setSavedCourses(courses);
       setIsOpenModalVisible(true);
-      setCornerMenuOpen(false);
     });
   };
 
   const handleSaveCourseClick = () => {
     setIsSaveModalVisible(true);
-    setCornerMenuOpen(false);
   };
 
   const handleConfirmSave = (isNew) => {
@@ -881,8 +879,8 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
             type="button"
             onClick={() => {
               setIsRcLiveMode(false);
-              if (map && !autoSimPos) {
-                const center = map.getCenter();
+              if (mapRef.current && !autoSimPos) {
+                const center = mapRef.current.getCenter();
                 const newPos = { lat: center.lat, lng: center.lng };
                 setSimulatedBoatPos(newPos);
                 localStorage.setItem('simulated_boat_pos', JSON.stringify(newPos));

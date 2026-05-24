@@ -418,7 +418,22 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
              // Steer towards this FIXED offset target
              desiredBearing = turf.bearing(boatPt, offsetTarget);
           } else {
-            desiredBearing = turf.bearing(boatPt, tPt);
+             const ptA = turf.point([target.coords[0][1], target.coords[0][0]]);
+             const ptB = turf.point([target.coords[1][1], target.coords[1][0]]);
+             const lineBearing = turf.bearing(ptA, ptB);
+             const crossingSide = target.crossing || 'up';
+             const arrowBearing = lineBearing + (crossingSide === 'up' ? -90 : 90);
+             
+             // Approach point is 50m "behind" the line midpoint
+             const reverseArrowBearing = (arrowBearing + 180) % 360;
+             const approachPt = turf.destination(tPt, 0.05, reverseArrowBearing, { units: 'kilometers' });
+             
+             const distToApproach = turf.distance(boatPt, approachPt, { units: 'kilometers' });
+             if (distToApproach > 0.06) {
+               desiredBearing = turf.bearing(boatPt, approachPt);
+             } else {
+               desiredBearing = turf.bearing(boatPt, tPt);
+             }
           }
         }
 
@@ -455,22 +470,13 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
         const sLng = (startLine.coords[0][1] + startLine.coords[1][1]) / 2;
         const startPt = turf.point([sLng, sLat]);
         
-        let courseBearing = 0; // default North if no next mark
-        const nextMark = targets[startIdx + 1];
-        if (nextMark) {
-          let nLat, nLng;
-          if (nextMark.kind === 'buoy' && nextMark.coord) {
-            nLat = nextMark.coord[0]; nLng = nextMark.coord[1];
-          } else if (nextMark.coords) {
-            nLat = (nextMark.coords[0][0] + nextMark.coords[1][0]) / 2;
-            nLng = (nextMark.coords[0][1] + nextMark.coords[1][1]) / 2;
-          }
-          if (nLat !== undefined && nLng !== undefined) {
-             courseBearing = turf.bearing(startPt, turf.point([nLng, nLat]));
-          }
-        }
+        const ptA = turf.point([startLine.coords[0][1], startLine.coords[0][0]]);
+        const ptB = turf.point([startLine.coords[1][1], startLine.coords[1][0]]);
+        const lineBearing = turf.bearing(ptA, ptB);
+        const crossingSide = startLine.crossing || 'up';
+        const arrowBearing = lineBearing + (crossingSide === 'up' ? -90 : 90);
         
-        const reverseBearing = (courseBearing + 180) % 360;
+        const reverseBearing = (arrowBearing + 180) % 360;
         const spawnPt = turf.destination(startPt, 0.3, reverseBearing, { units: 'kilometers' });
         const [spawnLng, spawnLat] = spawnPt.geometry.coordinates;
         
@@ -478,8 +484,8 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           ...prev,
           lat: spawnLat,
           lng: spawnLng,
-          heading: (courseBearing + 360) % 360,
-          targetHeading: (courseBearing + 360) % 360
+          heading: (arrowBearing + 360) % 360,
+          targetHeading: (arrowBearing + 360) % 360
         }));
       }
     }
