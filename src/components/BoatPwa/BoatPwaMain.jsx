@@ -620,6 +620,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
   const activePos = isLiveMode && position ? position : simulatedPos;
   const minDistanceRef = useRef(Infinity);
   const closestSideRef = useRef(null);
+  const lastPosRef = useRef(null);
 
   // Auto-advance to next buoy using Closest Point of Approach (CPA)
   useEffect(() => {
@@ -627,8 +628,9 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
     const targets = course.checkpoints.filter(isRaceTarget);
     const target = targets[activeTargetIndex];
     if (target) {
+      const isLine = getCheckpointKind(target) !== 'buoy';
       let tLat, tLng;
-      if (getCheckpointKind(target) === 'buoy') {
+      if (!isLine) {
         tLat = target.coord[0];
         tLng = target.coord[1];
       } else {
@@ -650,44 +652,65 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
         closestSideRef.current = relativeBearing < 0 ? 'port' : 'starboard';
       }
       
-      let hasRoundedCorrectly = false;
-      const rounding = target.rounding ? target.rounding.toLowerCase() : 'line';
-      
-      if (rounding === 'port') {
-        // Buoy must be on the port (left) side at closest approach, and passing behind
-        hasRoundedCorrectly = (relativeBearing < -135) && (closestSideRef.current === 'port');
-      } else if (rounding === 'starboard') {
-        // Buoy must be on the starboard (right) side at closest approach, and passing behind
-        hasRoundedCorrectly = (relativeBearing > 135) && (closestSideRef.current === 'starboard');
-      } else {
-        hasRoundedCorrectly = Math.abs(relativeBearing) > 135;
-      }
-
-      // Clear buoy later: when we are close to the mark (within 300m) and the mark is now passing well behind us
-      if (minDistanceRef.current < 0.3 && hasRoundedCorrectly) {
-        if (activeTargetIndex < targets.length) {
+      if (isLine) {
+        // For lines (start, finish, gates), we strictly check if the boat path intersected the line segment
+        let lineCrossed = false;
+        if (lastPosRef.current && (lastPosRef.current.lat !== activePos.lat || lastPosRef.current.lng !== activePos.lng)) {
+          const boatPath = turf.lineString([
+            [lastPosRef.current.lng, lastPosRef.current.lat],
+            [activePos.lng, activePos.lat]
+          ]);
+          const targetLine = turf.lineString([
+            [target.coords[0][1], target.coords[0][0]],
+            [target.coords[1][1], target.coords[1][0]]
+          ]);
+          const intersects = turf.lineIntersect(boatPath, targetLine);
+          if (intersects.features.length > 0) {
+            lineCrossed = true;
+          }
+        }
+        
+        if (lineCrossed && activeTargetIndex < targets.length) {
           setActiveTargetIndex(prev => prev + 1);
           minDistanceRef.current = Infinity; // Reset for next target
           closestSideRef.current = null;
         }
-      } else if (distance > minDistanceRef.current + 0.1 && minDistanceRef.current < 0.4) {
-        // Fallback: Turn completed by sailing away
-        // Check if it was on the correct side at closest approach
-        let sideCorrect = true;
-        if (rounding === 'port') sideCorrect = closestSideRef.current === 'port';
-        if (rounding === 'starboard') sideCorrect = closestSideRef.current === 'starboard';
+      } else {
+        // For buoys, we use CPA and rounding direction
+        let hasRoundedCorrectly = false;
+        const rounding = target.rounding ? target.rounding.toLowerCase() : 'line';
         
-        if (sideCorrect && activeTargetIndex < targets.length) {
-          setActiveTargetIndex(prev => prev + 1);
-          minDistanceRef.current = Infinity; // Reset for next target
-          closestSideRef.current = null;
-        } else if (!sideCorrect && distance > 0.2) {
-          // They sailed away on the WRONG side. Reset so they can try again.
-          minDistanceRef.current = Infinity;
-          closestSideRef.current = null;
+        if (rounding === 'port') {
+          hasRoundedCorrectly = (relativeBearing < -135) && (closestSideRef.current === 'port');
+        } else if (rounding === 'starboard') {
+          hasRoundedCorrectly = (relativeBearing > 135) && (closestSideRef.current === 'starboard');
+        } else {
+          hasRoundedCorrectly = Math.abs(relativeBearing) > 135;
+        }
+
+        if (minDistanceRef.current < 0.3 && hasRoundedCorrectly) {
+          if (activeTargetIndex < targets.length) {
+            setActiveTargetIndex(prev => prev + 1);
+            minDistanceRef.current = Infinity;
+            closestSideRef.current = null;
+          }
+        } else if (distance > minDistanceRef.current + 0.1 && minDistanceRef.current < 0.4) {
+          let sideCorrect = true;
+          if (rounding === 'port') sideCorrect = closestSideRef.current === 'port';
+          if (rounding === 'starboard') sideCorrect = closestSideRef.current === 'starboard';
+          
+          if (sideCorrect && activeTargetIndex < targets.length) {
+            setActiveTargetIndex(prev => prev + 1);
+            minDistanceRef.current = Infinity;
+            closestSideRef.current = null;
+          } else if (!sideCorrect && distance > 0.2) {
+            minDistanceRef.current = Infinity;
+            closestSideRef.current = null;
+          }
         }
       }
     }
+    lastPosRef.current = { lat: activePos.lat, lng: activePos.lng };
   }, [activePos, course, activeTargetIndex]);
 
   // Calculate relative bearing to the next target
