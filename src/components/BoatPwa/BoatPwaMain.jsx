@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Circle, CircleMarker, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import * as turf from '@turf/turf';
-import { Navigation, LocateFixed, Maximize, Plus, Minus, X, CircleDot, CornerUpLeft, CornerUpRight } from 'lucide-react';
+import { Navigation, LocateFixed, Maximize, Plus, Minus, X, CircleDot, CornerUpLeft, CornerUpRight, Info } from 'lucide-react';
 import { useGpsTracker } from '../../hooks/useGpsTracker';
 import { supabase } from '../../database/mockSupabase';
 import RaceLineMarker from '../RaceLineMarker';
 import TapeCompass from './TapeCompass';
+import InteractiveSeamarksLayer from '../InteractiveSeamarksLayer';
 
 // Dynamic rotated boat icon (top-down view)
 const createRotatedBoatIcon = (heading) => {
@@ -228,8 +229,8 @@ function BuoyCircles({ targetPos }) {
 }
 
 export default function BoatPwaMain({ courseOverride, onStatusChange, showDots = true }) {
-  const [enabled, setEnabled] = useState(true);
-  const { position, isOnline, offlineQueueSize } = useGpsTracker('boat-1', enabled);
+  const [isLiveMode, setIsLiveMode] = useState(false);
+  const { position, isOnline, offlineQueueSize } = useGpsTracker('boat-1', isLiveMode);
   const [course, setCourse] = useState(null);
   const [simulatedPos, setSimulatedPos] = useState({ lat: 37.0255, lng: 27.4325, heading: 180, targetHeading: 180, speed: 6.0, timeMultiplier: 20 });
   const [trace, setTrace] = useState([]);
@@ -247,6 +248,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
   const [hasFinished, setHasFinished] = useState(false);
   const [isRaceFinishedModalOpen, setIsRaceFinishedModalOpen] = useState(false);
   const [hasDownloadedRoute, setHasDownloadedRoute] = useState(false);
+  const [isAttributionModalOpen, setIsAttributionModalOpen] = useState(false);
 
   useEffect(() => {
     if (!onStatusChange) return;
@@ -255,10 +257,10 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
       queueSize: offlineQueue.length + syncingQueue.length,
       pointsRecorded: trace.length,
       lastSynced: lastSyncedTime,
-      resolution: position && position.accuracy ? `± ${(position.accuracy).toFixed(1)}m` : '± 4.2m (Sim)',
-      collectionStatus: enabled ? 'Active' : 'Paused'
+      resolution: isLiveMode && position && position.accuracy ? `± ${(position.accuracy).toFixed(1)}m` : '± 4.2m (Sim)',
+      collectionStatus: 'Active'
     });
-  }, [isSimOnline, isSyncing, offlineQueue.length, syncingQueue.length, trace.length, lastSyncedTime, enabled, position, onStatusChange]);
+  }, [isSimOnline, isSyncing, offlineQueue.length, syncingQueue.length, trace.length, lastSyncedTime, isLiveMode, position, onStatusChange]);
 
   useEffect(() => {
     if (courseOverride) {
@@ -274,7 +276,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
   // Simple GPS simulator
   useEffect(() => {
     let interval;
-    if (enabled) {
+    if (!isLiveMode) {
       interval = setInterval(() => {
         setSimulatedPos(prev => {
           let currentHdg = prev.heading;
@@ -373,17 +375,17 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
       }, 50);
     }
     return () => clearInterval(interval);
-  }, [enabled]);
+  }, [isLiveMode]);
 
   // Sync simulator to tracker (mocking the real navigator.geolocation for local demo)
   useEffect(() => {
-    if (enabled && navigator.geolocation.mock) {
+    if (!isLiveMode && navigator.geolocation.mock) {
        // if we were strictly intercepting. Instead we'll just display simulatedPos directly 
        // but in a real PWA this uses useGpsTracker position
     }
-  }, [simulatedPos, enabled]);
+  }, [simulatedPos, isLiveMode]);
 
-  const activePos = enabled ? simulatedPos : (position || simulatedPos);
+  const activePos = isLiveMode && position ? position : simulatedPos;
   const minDistanceRef = useRef(Infinity);
   const closestSideRef = useRef(null);
 
@@ -531,11 +533,11 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
 
   return (
     <div className="map-container">
-      <MapContainer center={[37.015, 27.420]} zoom={14} zoomControl={false} preferCanvas={true} style={{ width: '100%', height: '100%' }}>
+      <MapContainer center={[37.015, 27.420]} zoom={14} zoomControl={false} attributionControl={false} preferCanvas={true} style={{ width: '100%', height: '100%' }}>
         <TileLayer
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-          attribution="&copy; OpenStreetMap contributors &copy; CARTO"
         />
+        <InteractiveSeamarksLayer />
         <MapInvalidator />
         <MapControls pos={activePos} autoCenter={autoCenter} setAutoCenter={setAutoCenter} />
         <Polyline positions={trace.map(p => [p.lat, p.lng])} color="#33658A" weight={3} opacity={0.6} />
@@ -627,55 +629,79 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
         })}
       </MapContainer>
 
-      <div className="simulator-panel" style={{ padding: '8px', background: 'transparent', boxShadow: 'none', border: 'none' }}>
-        <div className="dir-buttons" style={{ marginTop: 0, gap: '4px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <div className="steer-wrapper">
-            <button
-              className="steer-btn"
-              onClick={() => setSimulatedPos(p => ({...p, targetHeading: (p.targetHeading !== undefined ? p.targetHeading : p.heading) - 10}))}
-              title="Steer Port"
-            >
-              <svg viewBox="0 0 100 100" width="48" height="48" style={{ filter: 'drop-shadow(0 4px 4px rgba(0,0,0,0.4))' }}>
-                <defs>
-                  <linearGradient id="redPlastic" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#ff8f8f" />
-                    <stop offset="30%" stopColor="#ef4444" />
-                    <stop offset="100%" stopColor="#991b1b" />
-                  </linearGradient>
-                </defs>
-                <polygon points="85,15 85,85 15,50" fill="url(#redPlastic)" stroke="#7f1d1d" strokeWidth="2" strokeLinejoin="round" />
-                <polygon points="82,20 82,80 22,50" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="3" strokeLinejoin="round" />
-                <text x="52%" y="55%" textAnchor="middle" fill="white" fontSize="28" fontWeight="bold" dy="0.3em">10</text>
-              </svg>
+      <div style={{ position: 'absolute', bottom: 'max(15px, env(safe-area-inset-bottom))', left: '50%', transform: 'translateX(-50%)', width: '90%', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 999 }}>
+        <div className="simulator-panel" style={{ padding: '0 8px', background: 'transparent', boxShadow: 'none', border: 'none', position: 'relative', bottom: 'auto', right: 'auto', width: '100%', display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          
+          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderRadius: '24px', padding: '4px', border: '1px solid rgba(0,0,0,0.1)', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+            <button 
+              type="button"
+              onClick={() => setIsLiveMode(false)}
+              style={{ flex: 1, padding: '6px 16px', borderRadius: '20px', border: 'none', background: !isLiveMode ? 'var(--accent-blue)' : 'transparent', color: !isLiveMode ? 'white' : 'var(--text-secondary)', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+              Simulator
+            </button>
+            <button 
+              type="button"
+              onClick={() => setIsLiveMode(true)}
+              style={{ flex: 1, padding: '6px 16px', borderRadius: '20px', border: 'none', background: isLiveMode ? 'var(--accent-coral)' : 'transparent', color: isLiveMode ? 'white' : 'var(--text-secondary)', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+              Live GPS
             </button>
           </div>
-          <div className="steer-wrapper">
-            <button
-              className="steer-btn"
-              onClick={() => setSimulatedPos(p => ({...p, targetHeading: (p.targetHeading !== undefined ? p.targetHeading : p.heading) + 10}))}
-              title="Steer Starboard"
-            >
-              <svg viewBox="0 0 100 100" width="48" height="48" style={{ filter: 'drop-shadow(0 4px 4px rgba(0,0,0,0.4))' }}>
-                <defs>
-                  <linearGradient id="greenPlastic" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#6ee7b7" />
-                    <stop offset="30%" stopColor="#22c55e" />
-                    <stop offset="100%" stopColor="#14532d" />
-                  </linearGradient>
-                </defs>
-                <polygon points="15,15 15,85 85,50" fill="url(#greenPlastic)" stroke="#14532d" strokeWidth="2" strokeLinejoin="round" />
-                <polygon points="18,20 18,80 78,50" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="3" strokeLinejoin="round" />
-                <text x="48%" y="55%" textAnchor="middle" fill="white" fontSize="28" fontWeight="bold" dy="0.3em">10</text>
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
 
-      <div className="helm-dashboard glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {!isLiveMode && (
+            <div className="dir-buttons" style={{ margin: 0, gap: '4px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              <div className="steer-wrapper">
+                <button
+                  className="steer-btn"
+                  onClick={() => setSimulatedPos(p => ({...p, targetHeading: (p.targetHeading !== undefined ? p.targetHeading : p.heading) - 10}))}
+                  title="Steer Port"
+                >
+                  <svg viewBox="0 0 100 100" width="48" height="48" style={{ filter: 'drop-shadow(0 4px 4px rgba(0,0,0,0.4))' }}>
+                    <defs>
+                      <linearGradient id="redPlastic" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#ff8f8f" />
+                        <stop offset="30%" stopColor="#ef4444" />
+                        <stop offset="100%" stopColor="#991b1b" />
+                      </linearGradient>
+                    </defs>
+                    <polygon points="85,15 85,85 15,50" fill="url(#redPlastic)" stroke="#7f1d1d" strokeWidth="2" strokeLinejoin="round" />
+                    <polygon points="82,20 82,80 22,50" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="3" strokeLinejoin="round" />
+                    <text x="65%" y="50%" textAnchor="middle" fill="white" fontSize="28" fontWeight="bold" dy="0.35em">10</text>
+                  </svg>
+                </button>
+              </div>
+              <div className="steer-wrapper">
+                <button
+                  className="steer-btn"
+                  onClick={() => setSimulatedPos(p => ({...p, targetHeading: (p.targetHeading !== undefined ? p.targetHeading : p.heading) + 10}))}
+                  title="Steer Starboard"
+                >
+                  <svg viewBox="0 0 100 100" width="48" height="48" style={{ filter: 'drop-shadow(0 4px 4px rgba(0,0,0,0.4))' }}>
+                    <defs>
+                      <linearGradient id="greenPlastic" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#6ee7b7" />
+                        <stop offset="30%" stopColor="#22c55e" />
+                        <stop offset="100%" stopColor="#14532d" />
+                      </linearGradient>
+                    </defs>
+                    <polygon points="15,15 15,85 85,50" fill="url(#greenPlastic)" stroke="#14532d" strokeWidth="2" strokeLinejoin="round" />
+                    <polygon points="18,20 18,80 78,50" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="3" strokeLinejoin="round" />
+                    <text x="35%" y="50%" textAnchor="middle" fill="white" fontSize="28" fontWeight="bold" dy="0.35em">10</text>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="helm-dashboard glass-panel" style={{ position: 'relative', bottom: 'auto', left: 'auto', transform: 'none', width: '100%', display: 'flex', flexDirection: 'column', gap: '8px', margin: 0 }}>
         <div style={{ width: '100%' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>HEADING</span>
+            <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              HEADING
+              <button type="button" onClick={() => setIsAttributionModalOpen(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }} title="Map Info">
+                <Info size={14} />
+              </button>
+            </span>
             <span style={{ fontSize: '0.75rem', fontWeight: 900, color: 'var(--accent-coral)', display: 'flex', alignItems: 'center' }}>
               <CircleDot size={14} strokeWidth={3} style={{ marginRight: '4px' }} /> {targetName}
               {targetRounding === 'PORT' && <CornerUpLeft size={16} strokeWidth={3} style={{ marginLeft: '4px' }} title="Port Rounding" />}
@@ -699,6 +725,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           </div>
         </div>
       </div>
+    </div>
     {isRaceFinishedModalOpen && (
   <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
     <div className="modal-content" style={{ background: 'white', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '350px', boxShadow: 'var(--shadow-xl)' }}>
@@ -710,6 +737,21 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
       </div>
       <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <p>All coordinates successfully uploaded and the route has been saved locally.</p>
+      </div>
+    </div>
+  </div>
+)}
+    {isAttributionModalOpen && (
+  <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={() => setIsAttributionModalOpen(false)}>
+    <div className="modal-content" style={{ background: 'white', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '350px', boxShadow: 'var(--shadow-xl)' }} onClick={e => e.stopPropagation()}>
+      <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-primary)' }}>Map Info</h3>
+        <button type="button" className="icon-action" onClick={() => setIsAttributionModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+          <X size={20} />
+        </button>
+      </div>
+      <div className="modal-body" style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+        <p style={{ margin: 0 }}><strong>Leaflet</strong> | Seamarks &copy; <a href='http://www.openseamap.org' target="_blank" rel="noreferrer" style={{ color: 'var(--accent-blue)' }}>OpenSeaMap</a> contributors | Base map &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-blue)' }}>OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-blue)' }}>CARTO</a></p>
       </div>
     </div>
   </div>

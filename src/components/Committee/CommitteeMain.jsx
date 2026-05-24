@@ -13,6 +13,7 @@ import {
   CircleDot,
   FolderOpen,
   GitBranch,
+  Info,
   MoreHorizontal,
   Plus,
   Route,
@@ -25,6 +26,7 @@ import RaceLineMarker from '../RaceLineMarker';
 import { getLineMidpoint, lineCrossingLabel, normalizeLineCrossing } from '../../utils/raceLine';
 import ElementPopup from './ElementPopup';
 import CourseBottomSheet from './CourseBottomSheet';
+import InteractiveSeamarksLayer from '../InteractiveSeamarksLayer';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -264,6 +266,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
   const [showCourseLines, setShowCourseLines] = useState(false);
   const [bottomSheetExpanded, setBottomSheetExpanded] = useState(false);
   const [cornerMenuOpen, setCornerMenuOpen] = useState(false);
+  const [isAttributionModalOpen, setIsAttributionModalOpen] = useState(false);
 
   // Save / Open modal state
   const [isOpenModalVisible, setIsOpenModalVisible] = useState(false);
@@ -495,7 +498,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
   useEffect(() => {
     const obs = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect;
-      setContainerSize({ w: width, h: height });
+      setContainerSize({ w: width, height });
     });
     if (containerRef.current) obs.observe(containerRef.current);
     return () => obs.disconnect();
@@ -509,11 +512,12 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
         zoom={13}
         style={{ width: '100%', height: '100%' }}
         zoomControl={false}
+        attributionControl={false}
       >
         <TileLayer
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-          attribution='&copy; <a href="https://carto.com/">CARTO</a>'
         />
+        <InteractiveSeamarksLayer />
         <MapRefCapture mapRef={mapRef} />
         <MapInvalidator />
         <MapDeselectHandler
@@ -647,26 +651,36 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
         </div>
       )}
 
-      {/* ── Corner toolbar ── */}
-      <div className="rc-corner-toolbar">
+      <div className="rc-corner-toolbar" style={{ display: 'flex', gap: '8px' }}>
         <button
           type="button"
           className="rc-corner-btn"
-          aria-label="Course options"
-          onClick={() => setCornerMenuOpen((v) => !v)}
+          aria-label="Map Info"
+          onClick={() => setIsAttributionModalOpen(true)}
+          style={{ background: 'white' }}
         >
-          {cornerMenuOpen ? <X size={18} /> : <MoreHorizontal size={18} />}
+          <Info size={18} />
         </button>
-        {cornerMenuOpen && (
-          <div className="rc-corner-menu">
-            <button type="button" onClick={handleSaveCourseClick}>
-              <Save size={15} /> Save
-            </button>
-            <button type="button" onClick={handleOpenCoursesList}>
-              <FolderOpen size={15} /> Open
-            </button>
-          </div>
-        )}
+        <div style={{ position: 'relative' }}>
+          <button
+            type="button"
+            className="rc-corner-btn"
+            aria-label="Course options"
+            onClick={() => setCornerMenuOpen((v) => !v)}
+          >
+            {cornerMenuOpen ? <X size={18} /> : <MoreHorizontal size={18} />}
+          </button>
+          {cornerMenuOpen && (
+            <div className="rc-corner-menu">
+              <button type="button" onClick={handleSaveCourseClick}>
+                <Save size={15} /> Save
+              </button>
+              <button type="button" onClick={handleOpenCoursesList}>
+                <FolderOpen size={15} /> Open
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── FAB stack ── */}
@@ -794,6 +808,21 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
               >
                 Overwrite "{course?.name}"
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isAttributionModalOpen && (
+        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={() => setIsAttributionModalOpen(false)}>
+          <div className="modal-content" style={{ background: 'white', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '350px', boxShadow: 'var(--shadow-xl)' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-primary)' }}>Map Info</h3>
+              <button type="button" className="icon-action" onClick={() => setIsAttributionModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+              <p style={{ margin: 0 }}><strong>Leaflet</strong> | Seamarks &copy; <a href='http://www.openseamap.org' target="_blank" rel="noreferrer" style={{ color: 'var(--accent-blue)' }}>OpenSeaMap</a> contributors | Base map &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-blue)' }}>OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-blue)' }}>CARTO</a></p>
             </div>
           </div>
         </div>
