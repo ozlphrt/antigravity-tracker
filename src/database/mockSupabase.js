@@ -14,12 +14,7 @@ class MockSupabase {
     const defaultCourse = {
       id: 'course-1',
       name: 'Bodrum Bay Offshore',
-      checkpoints: [
-        { id: 'start', type: 'gate', coords: [[37.025, 27.430], [37.026, 27.435]] },
-        { id: 'buoy-1', type: 'buoy', coord: [37.010, 27.400], rounding: 'port' },
-        { id: 'buoy-2', type: 'buoy', coord: [36.995, 27.450], rounding: 'starboard' },
-        { id: 'finish', type: 'gate', coords: [[37.025, 27.430], [37.026, 27.435]] }
-      ]
+      checkpoints: []
     };
 
     const storedCourses = localStorage.getItem('rc_courses');

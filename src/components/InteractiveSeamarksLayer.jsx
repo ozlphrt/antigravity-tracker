@@ -62,6 +62,16 @@ const createSeamarkIcon = (tags, currentZoom) => {
   if (topMarkPath) {
     html += `<img src="${baseUrl}josm-seamarks/icons/svg/Q/Q9/${topMarkPath}/black.svg" style="width: 100%; height: 100%; position: absolute; top: -${topMarkOffset}px; left: 0; z-index: 2; pointer-events: none;" onerror="this.style.display='none'" />`;
   }
+
+  // Light flare based on IALA conventions (P10.1 teardrop)
+  const lightColorTag = tags.find(t => t.key === 'light:colour')?.val;
+  if (lightColorTag) {
+    const primaryLightCol = lightColorTag.split(';')[0].toLowerCase();
+    const allowedColors = ['white', 'red', 'green', 'yellow', 'amber', 'blue', 'magenta', 'orange', 'violet'];
+    if (allowedColors.includes(primaryLightCol)) {
+      html += `<img src="${baseUrl}josm-seamarks/icons/svg/P/P10.1_${primaryLightCol}.svg" style="width: 75%; height: auto; position: absolute; left: 50%; top: 50%; transform: translate(-4%, -97%) scaleX(-1); z-index: -1; pointer-events: none;" onerror="this.style.display='none'" />`;
+    }
+  }
   
   html += `</div>`;
   
@@ -117,7 +127,7 @@ export default function InteractiveSeamarksLayer() {
     // If the view is fully inside Bodrum and we have it cached, use the cache
     if (bodrumBounds.contains(currentBounds)) {
       try {
-        const cachedStr = localStorage.getItem('bodrum_seamarks');
+        const cachedStr = localStorage.getItem('bodrum_seamarks_v2');
         if (cachedStr) {
           setNodes(JSON.parse(cachedStr));
           lastFetchedBoundsRef.current = bodrumBounds;
@@ -144,8 +154,12 @@ export default function InteractiveSeamarksLayer() {
     
     const query = `
       [out:json][timeout:10];
-      node["seamark:type"](${s},${w},${n},${e});
-      out body;
+      (
+        node["seamark:type"](${s},${w},${n},${e});
+        way["seamark:type"](${s},${w},${n},${e});
+        relation["seamark:type"](${s},${w},${n},${e});
+      );
+      out center;
     `;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -178,7 +192,7 @@ export default function InteractiveSeamarksLayer() {
   // Initial fetch and Bodrum cache logic
   useEffect(() => {
     const bodrumBounds = L.latLngBounds([36.95, 27.20], [37.15, 27.55]);
-    const cachedStr = localStorage.getItem('bodrum_seamarks');
+    const cachedStr = localStorage.getItem('bodrum_seamarks_v2');
     
     if (cachedStr) {
       // We already cached Bodrum!
@@ -196,9 +210,13 @@ export default function InteractiveSeamarksLayer() {
       // First time launch: fetch Bodrum peninsula explicitly and cache it locally
       setLoading(true);
       const query = `
-        [out:json][timeout:25];
-        node["seamark:type"](36.95,27.20,37.15,27.55);
-        out body;
+        [out:json][timeout:10];
+        (
+          node["seamark:type"](36.95,27.20,37.15,27.55);
+          way["seamark:type"](36.95,27.20,37.15,27.55);
+          relation["seamark:type"](36.95,27.20,37.15,27.55);
+        );
+        out center;
       `;
       fetch('https://overpass-api.de/api/interpreter', {
         method: 'POST',
@@ -211,7 +229,7 @@ export default function InteractiveSeamarksLayer() {
         setNodes(fetchedNodes);
         lastFetchedBoundsRef.current = bodrumBounds;
         try {
-          localStorage.setItem('bodrum_seamarks', JSON.stringify(fetchedNodes));
+          localStorage.setItem('bodrum_seamarks_v2', JSON.stringify(fetchedNodes));
           console.log("Successfully cached Bodrum seamarks locally!");
         } catch (e) {
           console.warn('Could not save bodrum seamarks to localStorage');
@@ -239,6 +257,10 @@ export default function InteractiveSeamarksLayer() {
   return (
     <>
       {nodes.map(node => {
+        const lat = node.lat ?? node.center?.lat;
+        const lon = node.lon ?? node.center?.lon;
+        if (lat == null || lon == null) return null;
+
         // Extract relevant seamark tags safely
         const tags = Object.entries(node.tags || {})
           .filter(([k]) => k.startsWith('seamark:'))
@@ -246,23 +268,37 @@ export default function InteractiveSeamarksLayer() {
           
         const typeTag = tags.find(t => t.key === 'type')?.val || 'unknown';
         const nameTag = tags.find(t => t.key === 'name')?.val || node.tags?.name || 'Unnamed Seamark';
+        const lightChar = tags.find(t => t.key === 'light:character')?.val;
+        const lightCol = tags.find(t => t.key === 'light:colour')?.val;
+        const lightPer = tags.find(t => t.key === 'light:period')?.val;
+        const lightRng = tags.find(t => t.key === 'light:range')?.val;
+        const lightHt = tags.find(t => t.key === 'light:height')?.val;
+
+        let lightDesc = null;
+        if (lightChar) {
+          const colMap = { 'white': 'W', 'red': 'R', 'green': 'G', 'yellow': 'Y' };
+          const c = colMap[lightCol?.toLowerCase()] || lightCol || '';
+          lightDesc = `${lightChar} ${c} ${lightPer ? lightPer+'s' : ''} ${lightHt ? lightHt+'m' : ''} ${lightRng ? lightRng+'M' : ''}`.trim().replace(/\s+/g, ' ');
+        }
         
         return (
           <Marker 
             key={node.id} 
-            position={[node.lat, node.lon]}
+            position={[lat, lon]}
             icon={createSeamarkIcon(tags, currentZoom)}
           >
             <Popup className="seamark-popup">
-              <div style={{ minWidth: '150px' }}>
-                <h4 style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#1e293b' }}>{nameTag}</h4>
-                <div style={{ fontSize: '12px', color: '#475569', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  {tags.map(t => (
-                    <div key={t.key} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '2px' }}>
-                      <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{t.key.replace(/-/g, ' ')}</span>
-                      <span>{t.val}</span>
+              <div style={{ minWidth: '140px' }}>
+                <h4 style={{ margin: '0 0 4px 0', fontSize: '14px', color: '#1e293b' }}>{nameTag}</h4>
+                <div style={{ fontSize: '13px', color: '#475569' }}>
+                  <div style={{ textTransform: 'capitalize', fontWeight: 500, marginBottom: '6px' }}>
+                    {typeTag.replace(/_/g, ' ')}
+                  </div>
+                  {lightDesc && (
+                    <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '4px', border: '1px solid #e2e8f0', fontFamily: 'monospace', fontWeight: 'bold', fontSize: '12px' }}>
+                      {lightDesc}
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             </Popup>

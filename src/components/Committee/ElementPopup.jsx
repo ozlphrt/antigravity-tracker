@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { Trash2, Copy, GripHorizontal, MapPin } from 'lucide-react';
-import { normalizeLineCrossing } from '../../utils/raceLine';
+import { Trash2, Copy, GripHorizontal, MapPin, Ruler } from 'lucide-react';
+import { normalizeLineCrossing, getLineLengthMeters, formatLineLength } from '../../utils/raceLine';
 
 const POPUP_WIDTH = 240;
 const POPUP_HEIGHT_ESTIMATE = 280; // conservative estimate for clamping
@@ -104,6 +104,11 @@ export default function ElementPopup({
             <div className="rc-popup-id">{checkpoint.id}</div>
             <div className="rc-popup-kind">
               {isBuoy ? 'Buoy Mark' : lineKindLabel[checkpoint.kind]}
+              {!isBuoy && checkpoint.coords && (
+                <span style={{ marginLeft: '6px', color: 'var(--text-secondary)', fontWeight: 400, fontSize: '0.78rem' }}>
+                  ({formatLineLength(getLineLengthMeters(checkpoint.coords))})
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -175,7 +180,7 @@ export default function ElementPopup({
                   onClick={() => onUpdateLineKind(checkpoint.id, k)}
                   style={{ fontSize: '0.78rem' }}
                 >
-                  {k === 'start' ? 'Start' : k === 'gate' ? 'Gate' : 'Finish'}
+                  {lineKindLabel[k]}
                 </button>
               ))}
             </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronUp, ChevronDown, CircleDot, Flag, GitBranch, Goal, GripVertical, MapPin } from 'lucide-react';
+import { ChevronUp, ChevronDown, CircleDot, Flag, GitBranch, Goal, GripVertical, MapPin, Trash2 } from 'lucide-react';
 import {
   DndContext,
   closestCenter,
@@ -17,6 +17,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { formatLineLength } from '../../utils/raceLine';
 
 const kindLabel = { start: 'Start Line', gate: 'Gate', finish: 'Finish Line', buoy: 'Buoy Mark' };
 
@@ -27,7 +28,7 @@ const checkpointIcons = {
   finish: Goal,
 };
 
-function SortableRow({ checkpoint, isSelected, onSelect }) {
+function SortableRow({ checkpoint, isSelected, onSelect, onRemove }) {
   const {
     attributes,
     listeners,
@@ -67,6 +68,28 @@ function SortableRow({ checkpoint, isSelected, onSelect }) {
 
       <button
         type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove(checkpoint.id);
+        }}
+        style={{
+          background: 'none',
+          border: 'none',
+          padding: '8px',
+          cursor: 'pointer',
+          color: '#94a3b8',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginLeft: '-8px' // offset to tighten gap slightly
+        }}
+        title={`Delete ${checkpoint.id}`}
+      >
+        <Trash2 size={16} />
+      </button>
+
+      <button
+        type="button"
         className="checkpoint-select"
         onClick={() => onSelect(checkpoint.id)}
       >
@@ -75,7 +98,14 @@ function SortableRow({ checkpoint, isSelected, onSelect }) {
         </div>
         <div className="checkpoint-summary">
           <strong>{checkpoint.id}</strong>
-          <span>{kindLabel[checkpoint.kind]}</span>
+          <span>
+            {kindLabel[checkpoint.kind]}
+            {checkpoint.lineLength != null && checkpoint.kind !== 'buoy' && (
+              <span style={{ marginLeft: '4px', color: '#94a3b8', fontWeight: 400, fontSize: '0.8em' }}>
+                &middot; {formatLineLength(checkpoint.lineLength)}
+              </span>
+            )}
+          </span>
         </div>
       </button>
     </li>
@@ -89,6 +119,7 @@ export default function CourseBottomSheet({
   selectedId,
   onSelect,
   onReorder,
+  onRemove,
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -142,6 +173,7 @@ export default function CourseBottomSheet({
                       checkpoint={cp}
                       isSelected={cp.id === selectedId}
                       onSelect={onSelect}
+                      onRemove={onRemove}
                     />
                   ))}
                 </ul>

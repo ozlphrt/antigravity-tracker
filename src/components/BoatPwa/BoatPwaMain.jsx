@@ -44,15 +44,18 @@ function MapInvalidator() {
   return null;
 }
 
-const buoyIcon = new L.DivIcon({
-  html: `<div style="width: 18px; height: 18px; border-radius: 50%; background: #F26419; border: 3px solid #fff; box-shadow: 0 2px 5px rgba(15,23,42,0.25);"></div>`,
-  className: '',
-  iconSize: [18, 18],
-  iconAnchor: [9, 9],
-});
+const createStaticBuoyIcon = (rounding = 'port') => {
+  return new L.DivIcon({
+    html: `<div style="width: 18px; height: 18px; border-radius: 50%; background: var(--accent-coral); border: 3px solid #fff; box-shadow: 0 2px 5px rgba(15,23,42,0.25);"></div>`,
+    className: '',
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+  });
+};
 
 const createTargetBuoyIcon = (rounding) => {
   const isPort = rounding.toLowerCase() === 'port';
+  const color = 'var(--accent-coral)';
   const svgPath = isPort 
     ? `<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>` 
     : `<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>`;
@@ -61,10 +64,10 @@ const createTargetBuoyIcon = (rounding) => {
     
   return new L.DivIcon({
     html: `<div style="position: relative; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
-      <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#F26419" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="${animClass}">
+      <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="${animClass}">
         ${svgPath}
       </svg>
-      <svg style="position: absolute;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#F26419" width="16" height="16">
+      <svg style="position: absolute;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" width="16" height="16">
         <circle cx="12" cy="12" r="8"/>
       </svg>
     </div>`,
@@ -86,7 +89,7 @@ const getCheckpointKind = (checkpoint) => {
 
 const isRaceTarget = (checkpoint) => {
   const kind = getCheckpointKind(checkpoint);
-  return kind === 'buoy' || kind === 'gate' || kind === 'finish';
+  return kind === 'start' || kind === 'buoy' || kind === 'gate' || kind === 'finish';
 };
 
 function MapControls({ pos, autoCenter, setAutoCenter }) {
@@ -107,10 +110,8 @@ function MapControls({ pos, autoCenter, setAutoCenter }) {
       setAutoCenter(false);
     };
     map.on('dragstart', disableAuto);
-    map.on('zoomstart', disableAuto); // Disable if user pinches to zoom
     return () => {
       map.off('dragstart', disableAuto);
-      map.off('zoomstart', disableAuto);
     };
   }, [map, setAutoCenter]);
   return (
@@ -158,8 +159,7 @@ function MapControls({ pos, autoCenter, setAutoCenter }) {
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            setAutoCenter(false);
-            map.zoomIn();
+            map.setZoom(map.getZoom() + 0.5, { animate: true });
           }}
           style={{
             background: 'white',
@@ -182,8 +182,7 @@ function MapControls({ pos, autoCenter, setAutoCenter }) {
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            setAutoCenter(false);
-            map.zoomOut();
+            map.setZoom(map.getZoom() - 0.5, { animate: true });
           }}
           style={{
             background: 'white',
@@ -229,13 +228,64 @@ function BuoyCircles({ targetPos }) {
 }
 
 export default function BoatPwaMain({ courseOverride, onStatusChange, showDots = true }) {
-  const [isLiveMode, setIsLiveMode] = useState(false);
-  const { position, isOnline, offlineQueueSize } = useGpsTracker('boat-1', isLiveMode);
+  const [isLiveMode, setIsLiveMode] = useState(true);
+
+  // Callback for live GPS trace — runs inside useGpsTracker on each captured fix
+  const liveTrackCallback = React.useCallback((point) => {
+    setTrace(t => [...t, point]);
+  }, []);
+
+  const { position, isOnline, offlineQueueSize } = useGpsTracker('boat-1', isLiveMode, liveTrackCallback);
   const [course, setCourse] = useState(null);
-  const [simulatedPos, setSimulatedPos] = useState({ lat: 37.0255, lng: 27.4325, heading: 180, targetHeading: 180, speed: 6.0, timeMultiplier: 20 });
+  const [simulatedPos, setSimulatedPos] = useState(() => {
+    const saved = localStorage.getItem('simulated_boat_pos');
+    const pos = saved ? JSON.parse(saved) : { lat: 37.0255, lng: 27.4325 };
+    return { ...pos, heading: 180, targetHeading: 180, speed: 6.0, timeMultiplier: 20 };
+  });
+
+  // If no saved position, auto-place the simulated boat behind the start line (500 m)
+  useEffect(() => {
+    if (localStorage.getItem('simulated_boat_pos')) return;
+    if (!course) return;
+    const isRaceTarget = (cp) => cp.kind === 'start' || cp.kind === 'buoy' || cp.kind === 'gate' || cp.kind === 'finish';
+    const targets = course.checkpoints.filter(isRaceTarget);
+    const startIdx = targets.findIndex(cp => cp.kind === 'start');
+    if (startIdx !== -1) {
+      const startLine = targets[startIdx];
+      const sLat = (startLine.coords[0][0] + startLine.coords[1][0]) / 2;
+      const sLng = (startLine.coords[0][1] + startLine.coords[1][1]) / 2;
+      const startPt = turf.point([sLng, sLat]);
+      let courseBearing = 0;
+      const nextMark = targets[startIdx + 1];
+      if (nextMark) {
+        let nLat, nLng;
+        if (nextMark.kind === 'buoy' && nextMark.coord) {
+          nLat = nextMark.coord[0]; nLng = nextMark.coord[1];
+        } else if (nextMark.coords) {
+          nLat = (nextMark.coords[0][0] + nextMark.coords[1][0]) / 2;
+          nLng = (nextMark.coords[0][1] + nextMark.coords[1][1]) / 2;
+        }
+        if (nLat !== undefined && nLng !== undefined) {
+          courseBearing = turf.bearing(startPt, turf.point([nLng, nLat]));
+        }
+      }
+      const reverseBearing = (courseBearing + 180) % 360;
+      const spawnPt = turf.destination(startPt, 0.4, reverseBearing, { units: 'kilometers' }); // 400 m behind start line
+      const [spawnLng, spawnLat] = spawnPt.geometry.coordinates;
+      const newPos = { lat: spawnLat, lng: spawnLng, heading: 180, targetHeading: 180, speed: 6.0, timeMultiplier: 20 };
+      setSimulatedPos(newPos);
+      localStorage.setItem('simulated_boat_pos', JSON.stringify(newPos));
+    }
+  }, [course]);
   const [trace, setTrace] = useState([]);
   const [autoCenter, setAutoCenter] = useState(true);
   const [activeTargetIndex, setActiveTargetIndex] = useState(0);
+
+  // Auto steer
+  const [isAutoSteer, setIsAutoSteer] = useState(true);
+  const autoSteerOverrideUntil = useRef(0); // timestamp until which override is active
+  const autoSteerPhase = useRef('approach'); // 'approach' | 'race'
+  const upwindWaypointRef = useRef(null);  // computed once per auto-steer activation
 
   // Telemetry & Offline State
   const [isSimOnline, setIsSimOnline] = useState(true);
@@ -262,6 +312,125 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
     });
   }, [isSimOnline, isSyncing, offlineQueue.length, syncingQueue.length, trace.length, lastSyncedTime, isLiveMode, position, onStatusChange]);
 
+  // Reset trace and target index when switching between Live and Sim
+  useEffect(() => {
+    setTrace([]);
+    setActiveTargetIndex(0);
+    minDistanceRef.current = Infinity;
+    closestSideRef.current = null;
+    lastCapturedPos.current = null;
+    setIsAutoSteer(!isLiveMode);
+    autoSteerPhase.current = 'approach';
+    upwindWaypointRef.current = null;
+  }, [isLiveMode]);
+
+  // ── Auto Steer ─────────────────────────────────────────────────────────────
+  // Runs only in Sim mode. On each tick computes the desired heading:
+  //   Phase 1 "approach": navigate to a waypoint 300 m upwind of the start line midpoint.
+  //   Phase 2 "race":     navigate straight to the active target midpoint.
+  useEffect(() => {
+    if (!isAutoSteer || isLiveMode || !course) return;
+
+    const targets = course.checkpoints.filter(isRaceTarget);
+    if (targets.length === 0) return;
+
+    // Build upwind waypoint from start line on first activation
+    if (!upwindWaypointRef.current) {
+      const startCp = course.checkpoints.find(cp => {
+        const k = cp.kind || cp.type;
+        return k === 'start';
+      });
+      if (startCp && startCp.coords) {
+        const mid = turf.point([
+          (startCp.coords[0][1] + startCp.coords[1][1]) / 2,
+          (startCp.coords[0][0] + startCp.coords[1][0]) / 2,
+        ]);
+        // 300 m upwind (bearing 0 = north = "upwind" assumed; adjust if course has wind direction)
+        const upwind = turf.destination(mid, 0.3, 0, { units: 'kilometers' });
+        upwindWaypointRef.current = {
+          lat: upwind.geometry.coordinates[1],
+          lng: upwind.geometry.coordinates[0],
+        };
+      } else {
+        // No start line — skip approach phase
+        autoSteerPhase.current = 'race';
+        upwindWaypointRef.current = { lat: 0, lng: 0 }; // sentinel
+      }
+    }
+
+    const interval = setInterval(() => {
+      setSimulatedPos(prev => {
+        if (Date.now() < autoSteerOverrideUntil.current) return prev; // manual override active
+
+        let desiredBearing;
+
+        if (autoSteerPhase.current === 'approach' && upwindWaypointRef.current) {
+          const wp = upwindWaypointRef.current;
+          const boatPt = turf.point([prev.lng, prev.lat]);
+          const wpPt = turf.point([wp.lng, wp.lat]);
+          const distKm = turf.distance(boatPt, wpPt, { units: 'kilometers' });
+          desiredBearing = turf.bearing(boatPt, wpPt);
+
+          // Transition to race phase once within 50 m of the upwind waypoint
+          if (distKm < 0.05) {
+            autoSteerPhase.current = 'race';
+          }
+        } else {
+          // Race phase: aim at current target
+          const target = targets[activeTargetIndex];
+          if (!target) return prev; // finished
+
+          let tLat, tLng;
+          const kind = target.kind || target.type;
+          if (kind === 'buoy') {
+            tLat = target.coord[0]; tLng = target.coord[1];
+          } else {
+            tLat = (target.coords[0][0] + target.coords[1][0]) / 2;
+            tLng = (target.coords[0][1] + target.coords[1][1]) / 2;
+          }
+          const boatPt = turf.point([prev.lng, prev.lat]);
+          const tPt = turf.point([tLng, tLat]);
+
+          if (kind === 'buoy') {
+             // Calculate a FIXED approach bearing to determine the offset target
+             let approachBearing = 0;
+             const prevTarget = targets[activeTargetIndex - 1];
+             if (prevTarget) {
+                 let ptLat, ptLng;
+                 if (prevTarget.kind === 'buoy' && prevTarget.coord) { 
+                     ptLat = prevTarget.coord[0]; ptLng = prevTarget.coord[1]; 
+                 } else if (prevTarget.coords) { 
+                     ptLat = (prevTarget.coords[0][0] + prevTarget.coords[1][0])/2; 
+                     ptLng = (prevTarget.coords[0][1] + prevTarget.coords[1][1])/2; 
+                 }
+                 if (ptLat !== undefined && ptLng !== undefined) {
+                     approachBearing = turf.bearing(turf.point([ptLng, ptLat]), tPt);
+                 }
+             } else {
+                 approachBearing = upwindWaypointRef.current ? turf.bearing(turf.point([upwindWaypointRef.current.lng, upwindWaypointRef.current.lat]), tPt) : 0;
+             }
+
+             const isPort = (target.rounding || 'port').toLowerCase() === 'port';
+             const offsetBearing = approachBearing + (isPort ? 90 : -90);
+             // 25m offset to ensure we clear the buoy nicely
+             const offsetTarget = turf.destination(tPt, 0.025, offsetBearing, { units: 'kilometers' });
+             
+             // Steer towards this FIXED offset target
+             desiredBearing = turf.bearing(boatPt, offsetTarget);
+          } else {
+            desiredBearing = turf.bearing(boatPt, tPt);
+          }
+        }
+
+        // Normalise bearing to 0-360
+        const normBearing = (desiredBearing + 360) % 360;
+        return { ...prev, targetHeading: normBearing };
+      });
+    }, 100); // check 10x/sec
+
+    return () => clearInterval(interval);
+  }, [isAutoSteer, isLiveMode, course, activeTargetIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (courseOverride) {
       setCourse(courseOverride);
@@ -272,6 +441,49 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
 
     supabase.getCourses().then(courses => setCourse(courses[0]));
   }, [courseOverride]);
+
+  // Auto-place Sim Boat 300m behind start line
+  useEffect(() => {
+    if (course && course.checkpoints) {
+      const isRaceTarget = (cp) => cp.kind === 'start' || cp.kind === 'finish' || cp.kind === 'gate' || cp.kind === 'buoy';
+      const targets = course.checkpoints.filter(isRaceTarget);
+      const startIdx = targets.findIndex(cp => cp.kind === 'start');
+      
+      if (startIdx !== -1) {
+        const startLine = targets[startIdx];
+        const sLat = (startLine.coords[0][0] + startLine.coords[1][0]) / 2;
+        const sLng = (startLine.coords[0][1] + startLine.coords[1][1]) / 2;
+        const startPt = turf.point([sLng, sLat]);
+        
+        let courseBearing = 0; // default North if no next mark
+        const nextMark = targets[startIdx + 1];
+        if (nextMark) {
+          let nLat, nLng;
+          if (nextMark.kind === 'buoy' && nextMark.coord) {
+            nLat = nextMark.coord[0]; nLng = nextMark.coord[1];
+          } else if (nextMark.coords) {
+            nLat = (nextMark.coords[0][0] + nextMark.coords[1][0]) / 2;
+            nLng = (nextMark.coords[0][1] + nextMark.coords[1][1]) / 2;
+          }
+          if (nLat !== undefined && nLng !== undefined) {
+             courseBearing = turf.bearing(startPt, turf.point([nLng, nLat]));
+          }
+        }
+        
+        const reverseBearing = (courseBearing + 180) % 360;
+        const spawnPt = turf.destination(startPt, 0.3, reverseBearing, { units: 'kilometers' });
+        const [spawnLng, spawnLat] = spawnPt.geometry.coordinates;
+        
+        setSimulatedPos(prev => ({
+          ...prev,
+          lat: spawnLat,
+          lng: spawnLng,
+          heading: (courseBearing + 360) % 360,
+          targetHeading: (courseBearing + 360) % 360
+        }));
+      }
+    }
+  }, [course]);
 
   // Simple GPS simulator
   useEffect(() => {
@@ -284,6 +496,8 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           
           if (targetHdg !== currentHdg) {
             let diff = targetHdg - currentHdg;
+            while (diff <= -180) diff += 360;
+            while (diff > 180) diff -= 360;
             
             if (Math.abs(diff) <= 0.5) {
               currentHdg = targetHdg;
@@ -292,6 +506,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
               let turnSpeed = Math.abs(diff) * 0.1;
               turnSpeed = Math.min(Math.max(turnSpeed, 0.2), 2.0); // max 40 deg/sec
               currentHdg += Math.sign(diff) * turnSpeed;
+              currentHdg = (currentHdg + 360) % 360;
             }
           }
 
@@ -533,7 +748,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
 
   return (
     <div className="map-container">
-      <MapContainer center={[37.015, 27.420]} zoom={14} zoomControl={false} attributionControl={false} preferCanvas={true} style={{ width: '100%', height: '100%' }}>
+      <MapContainer center={[37.015, 27.420]} zoom={14} zoomSnap={0.1} zoomControl={false} attributionControl={false} preferCanvas={true} style={{ width: '100%', height: '100%' }}>
         <TileLayer
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         />
@@ -593,7 +808,19 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           return (
             <React.Fragment>
               <Polyline positions={lineCoords} color="#33658A" weight={2} dashArray="5, 5" opacity={0.8} />
-              <Marker position={[activePos.lat, activePos.lng]} icon={createRotatedBoatIcon(activePos.heading)} />
+              <Marker
+          position={[activePos.lat, activePos.lng]}
+          icon={createRotatedBoatIcon(activePos.heading)}
+          draggable={true}
+          eventHandlers={{
+            dragend: (e) => {
+              const { lat, lng } = e.target.getLatLng();
+              const newPos = { ...activePos, lat, lng };
+              setSimulatedPos(newPos);
+              localStorage.setItem('simulated_boat_pos', JSON.stringify(newPos));
+            },
+          }}
+        />
             </React.Fragment>
           );
         })()}
@@ -604,8 +831,8 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
         
         {course && course.checkpoints.map((cp, idx) => {
           if (cp.type === 'buoy') {
-             let iconToUse = buoyIcon;
              const isTarget = cp.id.toUpperCase() === targetName;
+             let iconToUse = createStaticBuoyIcon(cp.rounding || 'port');
              if (isTarget) {
                iconToUse = cp.rounding.toUpperCase() === 'PORT' ? portTargetIcon : stbdTargetIcon;
              }
@@ -636,23 +863,27 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
             <button 
               type="button"
               onClick={() => setIsLiveMode(false)}
-              style={{ flex: 1, padding: '6px 16px', borderRadius: '20px', border: 'none', background: !isLiveMode ? 'var(--accent-blue)' : 'transparent', color: !isLiveMode ? 'white' : 'var(--text-secondary)', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
-              Simulator
+              style={{ flex: 1, padding: '6px 14px', borderRadius: '20px', border: 'none', background: !isLiveMode ? 'var(--accent-blue)' : 'transparent', color: !isLiveMode ? 'white' : 'var(--text-secondary)', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+              Sim
             </button>
             <button 
               type="button"
               onClick={() => setIsLiveMode(true)}
-              style={{ flex: 1, padding: '6px 16px', borderRadius: '20px', border: 'none', background: isLiveMode ? 'var(--accent-coral)' : 'transparent', color: isLiveMode ? 'white' : 'var(--text-secondary)', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
-              Live GPS
+              style={{ flex: 1, padding: '6px 14px', borderRadius: '20px', border: 'none', background: isLiveMode ? 'var(--accent-coral)' : 'transparent', color: isLiveMode ? 'white' : 'var(--text-secondary)', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+              Live
             </button>
           </div>
 
           {!isLiveMode && (
             <div className="dir-buttons" style={{ margin: 0, gap: '4px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              {/* Port steer */}
               <div className="steer-wrapper">
                 <button
                   className="steer-btn"
-                  onClick={() => setSimulatedPos(p => ({...p, targetHeading: (p.targetHeading !== undefined ? p.targetHeading : p.heading) - 10}))}
+                  onClick={() => {
+                    autoSteerOverrideUntil.current = Date.now() + 8000;
+                    setSimulatedPos(p => ({...p, targetHeading: (p.targetHeading !== undefined ? p.targetHeading : p.heading) - 10}));
+                  }}
                   title="Steer Port"
                 >
                   <svg viewBox="0 0 100 100" width="48" height="48" style={{ filter: 'drop-shadow(0 4px 4px rgba(0,0,0,0.4))' }}>
@@ -669,10 +900,42 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
                   </svg>
                 </button>
               </div>
+
+              {/* Auto steer button */}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !isAutoSteer;
+                  if (next) {
+                    autoSteerPhase.current = 'approach';
+                    upwindWaypointRef.current = null;
+                    autoSteerOverrideUntil.current = 0;
+                  }
+                  setIsAutoSteer(next);
+                }}
+                title={isAutoSteer ? 'Auto Steer ON — tap to disable' : 'Enable Auto Steer'}
+                style={{
+                  width: '48px', height: '40px', borderRadius: '8px', border: 'none',
+                  background: isAutoSteer ? 'var(--accent-coral)' : 'rgba(255,255,255,0.9)',
+                  color: isAutoSteer ? 'white' : 'var(--text-secondary)',
+                  fontWeight: 900, fontSize: '0.85rem', cursor: 'pointer',
+                  boxShadow: isAutoSteer ? '0 0 0 3px rgba(242,100,25,0.35), 0 4px 12px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0,0,0,0.18)',
+                  transition: 'all 0.2s ease',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                AUTO
+              </button>
+
+              {/* Starboard steer */}
               <div className="steer-wrapper">
                 <button
                   className="steer-btn"
-                  onClick={() => setSimulatedPos(p => ({...p, targetHeading: (p.targetHeading !== undefined ? p.targetHeading : p.heading) + 10}))}
+                  onClick={() => {
+                    autoSteerOverrideUntil.current = Date.now() + 8000;
+                    setSimulatedPos(p => ({...p, targetHeading: (p.targetHeading !== undefined ? p.targetHeading : p.heading) + 10}));
+                  }}
                   title="Steer Starboard"
                 >
                   <svg viewBox="0 0 100 100" width="48" height="48" style={{ filter: 'drop-shadow(0 4px 4px rgba(0,0,0,0.4))' }}>

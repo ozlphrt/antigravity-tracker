@@ -46,7 +46,7 @@ function App() {
             className={activeModule === 'boat' ? 'active' : ''} 
             onClick={() => setActiveModule('boat')}
           >
-            Crew
+            Race
           </button>
           <button 
             className={activeModule === 'committee' ? 'active' : ''} 

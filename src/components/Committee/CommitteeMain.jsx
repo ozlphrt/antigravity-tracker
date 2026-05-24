@@ -7,8 +7,11 @@ import {
   TileLayer,
   useMap,
   useMapEvents,
+  Tooltip,
+  Circle
 } from 'react-leaflet';
 import L from 'leaflet';
+import * as turf from '@turf/turf';
 import {
   CircleDot,
   FolderOpen,
@@ -16,6 +19,9 @@ import {
   Info,
   MoreHorizontal,
   Plus,
+  Minus,
+  LocateFixed,
+  Navigation,
   Route,
   Save,
   Trash2,
@@ -23,10 +29,11 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../database/mockSupabase';
 import RaceLineMarker from '../RaceLineMarker';
-import { getLineMidpoint, lineCrossingLabel, normalizeLineCrossing } from '../../utils/raceLine';
+import { getLineLengthMeters, getLineMidpoint, lineCrossingLabel, normalizeLineCrossing } from '../../utils/raceLine';
 import ElementPopup from './ElementPopup';
 import CourseBottomSheet from './CourseBottomSheet';
 import InteractiveSeamarksLayer from '../InteractiveSeamarksLayer';
+import { useGpsTracker } from '../../hooks/useGpsTracker';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -40,6 +47,7 @@ const withLineCheckpoint = (checkpoint, kind, id) => ({
 
 const createRoundingBuoyIcon = (rounding, id = '') => {
   const isPort = rounding === 'port';
+  const color = 'var(--accent-coral)';
   const svgPath = isPort
     ? '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>'
     : '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>';
@@ -47,7 +55,7 @@ const createRoundingBuoyIcon = (rounding, id = '') => {
 
   return new L.DivIcon({
     html: `<div class="course-buoy-icon">
-      <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#F26419" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="${animClass}">
+      <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="${animClass}">
         ${svgPath}
       </svg>
       <div style="position:absolute;color:#1e293b;font-weight:900;font-size:13px;display:flex;align-items:center;justify-content:center;width:100%;height:100%;">${id}</div>
@@ -134,6 +142,13 @@ const normalizeCourseObjects = (checkpoints) => {
     return true;
   });
 };
+
+// Compute and attach lineLength (metres) for any line checkpoint that has coords
+const attachLineLengths = (checkpoints) =>
+  checkpoints.map((cp) => {
+    if (cp.kind === 'buoy' || !cp.coords) return cp;
+    return { ...cp, lineLength: Math.round(getLineLengthMeters(cp.coords)) };
+  });
 
 const enforceCourseOrder = (checkpoints) => {
   const start = checkpoints.filter((cp) => cp.kind === 'start');
@@ -249,6 +264,120 @@ function CourseConnectingLine({ checkpoints }) {
   );
 }
 
+// ─── Map Controls ─────────────────────────────────────────────────────────────
+
+function MapControls({ pos, autoCenter, setAutoCenter }) {
+  const map = useMap();
+  const lastCenterEnableTime = useRef(0);
+  
+  useEffect(() => {
+    if (autoCenter && pos) {
+      if (Date.now() - lastCenterEnableTime.current > 1200) {
+        map.setView([pos.lat, pos.lng], map.getZoom(), { animate: false });
+      }
+    }
+  }, [autoCenter, pos?.lat, pos?.lng, map]);
+
+  useEffect(() => {
+    const disableAuto = () => {
+      setAutoCenter(false);
+    };
+    map.on('dragstart', disableAuto);
+    return () => {
+      map.off('dragstart', disableAuto);
+    };
+  }, [map, setAutoCenter]);
+
+  return (
+    <div style={{
+      position: 'absolute',
+      top: '70px',
+      right: '15px',
+      zIndex: 1000,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px'
+    }}>
+      <button 
+        title="Center on Boat"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!autoCenter) {
+            lastCenterEnableTime.current = Date.now();
+            if (pos) map.flyTo([pos.lat, pos.lng], 14, { duration: 1.2 });
+          }
+          setAutoCenter(prev => !prev);
+        }}
+        style={{
+          background: autoCenter ? 'var(--accent-coral)' : 'white',
+          border: '1px solid #F1F5F9',
+          borderRadius: '50%',
+          width: '44px',
+          height: '44px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: 'var(--shadow-md)',
+          cursor: 'pointer',
+          color: autoCenter ? 'white' : 'var(--text-primary)'
+        }}
+      >
+        <LocateFixed size={22} />
+      </button>
+      
+      {/* Zoom Controls */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '8px' }}>
+        <button 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              map.setZoom(map.getZoom() + 0.5, { animate: true });
+            }}
+          style={{
+            background: 'white',
+            border: '1px solid #F1F5F9',
+            borderRadius: '50%',
+            width: '44px',
+            height: '44px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: 'var(--shadow-md)',
+            cursor: 'pointer',
+            color: 'var(--text-secondary)'
+          }}
+        >
+          <Plus size={22} />
+        </button>
+        
+        <button 
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              map.setZoom(map.getZoom() - 0.5, { animate: true });
+            }}
+          style={{
+            background: 'white',
+            border: '1px solid #F1F5F9',
+            borderRadius: '50%',
+            width: '44px',
+            height: '44px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: 'var(--shadow-md)',
+            cursor: 'pointer',
+            color: 'var(--text-secondary)'
+          }}
+        >
+          <Minus size={22} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function CommitteeMain({ courseDraft, onCourseChange }) {
@@ -256,6 +385,11 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
   const [draftCheckpoints, setDraftCheckpoints] = useState([]);
   const [selectedCheckpointId, setSelectedCheckpointId] = useState(null);
   const [selectedLineEndpointIndex, setSelectedLineEndpointIndex] = useState(null);
+
+  // RC GPS live tracking
+  const [isRcLiveMode, setIsRcLiveMode] = useState(true);
+  const { position: rcPosition } = useGpsTracker('rc-1', isRcLiveMode);
+  const [autoCenter, setAutoCenter] = useState(true);
 
   // Floating popup position (screen px within the map container)
   const [popupX, setPopupX] = useState(null);
@@ -265,8 +399,6 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
   const [fabOpen, setFabOpen] = useState(false);
   const [showCourseLines, setShowCourseLines] = useState(false);
   const [bottomSheetExpanded, setBottomSheetExpanded] = useState(false);
-  const [cornerMenuOpen, setCornerMenuOpen] = useState(false);
-  const [isAttributionModalOpen, setIsAttributionModalOpen] = useState(false);
 
   // Save / Open modal state
   const [isOpenModalVisible, setIsOpenModalVisible] = useState(false);
@@ -274,31 +406,79 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
   const [savedCourses, setSavedCourses] = useState([]);
   const [newCourseName, setNewCourseName] = useState('');
 
+  // Simulated Boat Position (for starting location in BoatPwaMain)
+  const [simulatedBoatPos, setSimulatedBoatPos] = useState(() => {
+    const saved = localStorage.getItem('simulated_boat_pos');
+    return saved ? JSON.parse(saved) : { lat: 37.0255, lng: 27.4325 };
+  });
+
+  const handleSimBoatDragEnd = (e) => {
+    const latlng = e.target.getLatLng();
+    const newPos = { lat: latlng.lat, lng: latlng.lng };
+    setSimulatedBoatPos(newPos);
+    localStorage.setItem('simulated_boat_pos', JSON.stringify(newPos));
+  };
+
   // Map ref (for placing elements at map center)
   const mapRef = useRef(null);
   const containerRef = useRef(null);
+
+  // Auto-calculated Sim Position (300m behind start line)
+  const autoSimPos = useMemo(() => {
+    const isRaceTarget = (cp) => cp.kind === 'start' || cp.kind === 'finish' || cp.kind === 'gate' || cp.kind === 'buoy';
+    const targets = draftCheckpoints.filter(isRaceTarget);
+    const startIdx = targets.findIndex(cp => cp.kind === 'start');
+    
+    if (startIdx !== -1) {
+      const startLine = targets[startIdx];
+      const sLat = (startLine.coords[0][0] + startLine.coords[1][0]) / 2;
+      const sLng = (startLine.coords[0][1] + startLine.coords[1][1]) / 2;
+      const startPt = turf.point([sLng, sLat]);
+      
+      let courseBearing = 0; // default North if no next mark
+      const nextMark = targets[startIdx + 1];
+      if (nextMark) {
+        let nLat, nLng;
+        if (nextMark.kind === 'buoy' && nextMark.coord) {
+          nLat = nextMark.coord[0]; nLng = nextMark.coord[1];
+        } else if (nextMark.coords) {
+          nLat = (nextMark.coords[0][0] + nextMark.coords[1][0]) / 2;
+          nLng = (nextMark.coords[0][1] + nextMark.coords[1][1]) / 2;
+        }
+        if (nLat !== undefined && nLng !== undefined) {
+           courseBearing = turf.bearing(startPt, turf.point([nLng, nLat]));
+        }
+      }
+      
+      const reverseBearing = (courseBearing + 180) % 360;
+      const spawnPt = turf.destination(startPt, 0.4, reverseBearing, { units: 'kilometers' }); // 400m behind start line
+      const [spawnLng, spawnLat] = spawnPt.geometry.coordinates;
+      
+      return { lat: spawnLat, lng: spawnLng };
+    }
+    return null;
+  }, [draftCheckpoints]);
 
   // ── Load ──
   useEffect(() => {
     if (courseDraft) {
       setCourse(courseDraft);
-      setDraftCheckpoints(enforceCourseOrder(normalizeCourseObjects(courseDraft.checkpoints)));
+      setDraftCheckpoints(attachLineLengths(enforceCourseOrder(normalizeCourseObjects(courseDraft.checkpoints))));
       return;
     }
     supabase.getCourses().then((courses) => {
       const first = courses[0];
       setCourse(first);
-      setDraftCheckpoints(enforceCourseOrder(normalizeCourseObjects(first.checkpoints)));
+      setDraftCheckpoints(attachLineLengths(enforceCourseOrder(normalizeCourseObjects(first.checkpoints))));
     });
   }, [courseDraft]);
 
   // ── Auto-sync ──
   useEffect(() => {
-    if (!course) return;
-    const cur = JSON.stringify(course?.checkpoints?.map((c) => ({ id: c.id, kind: c.kind, coords: c.coords, coord: c.coord, crossing: c.crossing, rounding: c.rounding })));
-    const next = JSON.stringify(draftCheckpoints.map((c) => ({ id: c.id, kind: c.kind, coords: c.coords, coord: c.coord, crossing: c.crossing, rounding: c.rounding })));
+    const cur = course ? JSON.stringify(course?.checkpoints?.map((c) => ({ id: c.id, kind: c.kind, coords: c.coords, coord: c.coord, crossing: c.crossing, rounding: c.rounding, lineLength: c.lineLength }))) : null;
+    const next = JSON.stringify(draftCheckpoints.map((c) => ({ id: c.id, kind: c.kind, coords: c.coords, coord: c.coord, crossing: c.crossing, rounding: c.rounding, lineLength: c.lineLength })));
     if (cur === next) return;
-    onCourseChange({ ...course, checkpoints: draftCheckpoints });
+    onCourseChange({ ...(course || { id: 'live-draft', name: 'Draft Course' }), checkpoints: draftCheckpoints });
   }, [course, draftCheckpoints, onCourseChange]);
 
   // ── Selection ──
@@ -328,7 +508,10 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     if (!map) return;
     const center = map.getCenter();
 
-    if (toolKind === 'buoy') {
+    let kind = toolKind;
+    if (draftCheckpoints.length === 0) kind = 'start';
+
+    if (kind === 'buoy') {
       let newId;
       setDraftCheckpoints((prev) => {
         newId = createId('buoy', prev);
@@ -357,11 +540,11 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
         [center.lat, center.lng + lngOffset],
       ];
       setDraftCheckpoints((prev) => {
-        const newId = createId(toolKind, prev);
-        const line = { id: newId, kind: toolKind, type: 'gate', coords, crossing: 'up' };
+        const newId = createId(kind, prev);
+        const line = { id: newId, kind: kind, type: 'gate', coords, crossing: 'up' };
         let next;
-        if (toolKind === 'start' || toolKind === 'finish') {
-          next = enforceCourseOrder(normalizeCourseObjects([...prev.filter((cp) => cp.kind !== toolKind), line]));
+        if (kind === 'start' || kind === 'finish') {
+          next = enforceCourseOrder(normalizeCourseObjects([...prev.filter((cp) => cp.kind !== kind), line]));
         } else {
           next = enforceCourseOrder([...prev, line]);
         }
@@ -377,21 +560,22 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     setDraftCheckpoints((prev) => prev.map((cp) => (cp.id === id ? { ...cp, rounding } : cp)));
 
   const updateLineKind = (id, kind) => {
-    const trackingId = Math.random().toString();
+    let newId = id;
+    if (kind === 'start') newId = 'S';
+    else if (kind === 'finish') newId = 'F';
+
     setDraftCheckpoints((prev) => {
-      const marked = prev.map((cp) => (cp.id === id ? { ...cp, kind, _tracking: trackingId } : cp));
-      const next = enforceCourseOrder(normalizeCourseObjects(marked));
-      
-      const updated = next.find(cp => cp._tracking === trackingId);
-      if (updated && selectedCheckpointId === id && updated.id !== id) {
-        setTimeout(() => setSelectedCheckpointId(updated.id), 0);
-      }
-      
-      return next.map(cp => {
-        const { _tracking, ...rest } = cp;
-        return rest;
-      });
+      let filtered = prev;
+      if (kind === 'start') filtered = prev.filter(cp => cp.kind !== 'start' || cp.id === id);
+      if (kind === 'finish') filtered = prev.filter(cp => cp.kind !== 'finish' || cp.id === id);
+
+      const next = filtered.map((cp) => (cp.id === id ? { ...cp, id: newId, kind } : cp));
+      return enforceCourseOrder(normalizeCourseObjects(next));
     });
+
+    if (selectedCheckpointId === id && newId !== id) {
+      setSelectedCheckpointId(newId);
+    }
   };
 
   const updateLineCrossing = (id, crossing) =>
@@ -480,7 +664,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
   const handleConfirmSave = (isNew) => {
     const finalName = isNew ? (newCourseName.trim() || 'New Course') : course.name;
     const finalId = isNew ? `course-${Date.now()}` : course.id;
-    const courseToSave = { ...course, id: finalId, name: finalName, checkpoints: draftCheckpoints };
+    const courseToSave = { ...course, id: finalId, name: finalName, checkpoints: attachLineLengths(draftCheckpoints) };
     supabase.saveCourse(courseToSave).then(() => {
       setCourse(courseToSave);
       onCourseChange(courseToSave);
@@ -504,16 +688,21 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     return () => obs.disconnect();
   }, []);
 
+
   return (
     <div className="rc-map-full" ref={containerRef}>
       {/* ── Map ── */}
       <MapContainer
-        center={[37.015, 27.420]}
-        zoom={13}
-        style={{ width: '100%', height: '100%' }}
+        center={[37.0255, 27.4325]}
+        zoom={14}
+        zoomSnap={0.1}
+        style={{ width: '100%', height: '100%', background: '#F8FAFC' }}
+        ref={mapRef}
         zoomControl={false}
-        attributionControl={false}
+        preferCanvas={true}
+        maxZoom={19}
       >
+        <MapControls pos={isRcLiveMode ? rcPosition : (autoSimPos || simulatedBoatPos)} autoCenter={autoCenter} setAutoCenter={setAutoCenter} />
         <TileLayer
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         />
@@ -630,7 +819,41 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
 
           return null;
         })}
+
+        {/* RC vessel GPS marker */}
+        {isRcLiveMode && rcPosition && (
+          <Marker
+            position={[rcPosition.lat, rcPosition.lng]}
+            icon={new L.DivIcon({
+              html: `<div style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.3));transform:rotate(0deg);">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#33658A" stroke="#fff" stroke-width="2" stroke-linejoin="round" width="30" height="30"><path d="M12 2 L19 21 Q12 18 5 21 Z"/></svg>
+              </div>`,
+              className: '',
+              iconSize: [30, 30],
+              iconAnchor: [15, 15],
+            })}
+          />
+        )}
+
+        {/* Simulated Boat Starting Locator (Sim Mode Only) */}
+        {!isRcLiveMode && (
+          <Marker
+            position={autoSimPos ? [autoSimPos.lat, autoSimPos.lng] : [simulatedBoatPos.lat, simulatedBoatPos.lng]}
+            draggable={!autoSimPos}
+            eventHandlers={!autoSimPos ? { dragend: handleSimBoatDragEnd } : undefined}
+            icon={new L.DivIcon({
+              html: `<div style=\"width:30px;height:30px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.3));\" title=\"${autoSimPos ? 'Auto-placed behind start line' : 'Drag to set Sim Start Position'}\">
+                  <svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"#33658A\" stroke=\"#fff\" stroke-width=\"2\" stroke-linejoin=\"round\" width=\"30\" height=\"30\"><path d=\"M12 2 L19 21 Q12 18 5 21 Z\"/></svg>
+                </div>`,
+              className: '',
+              iconSize: [30, 30],
+              iconAnchor: [15, 15],
+            })}
+          />
+        )}
       </MapContainer>
+
+
 
       {/* ── Floating popup overlay ── */}
       {selectedCheckpoint && popupX != null && popupY != null && (
@@ -651,40 +874,54 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
         </div>
       )}
 
-      <div className="rc-corner-toolbar" style={{ display: 'flex', gap: '8px' }}>
-        <button
-          type="button"
-          className="rc-corner-btn"
-          aria-label="Map Info"
-          onClick={() => setIsAttributionModalOpen(true)}
-          style={{ background: 'white' }}
-        >
-          <Info size={18} />
-        </button>
-        <div style={{ position: 'relative' }}>
+      <div className="rc-corner-toolbar" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        {/* Sim / Live toggle */}
+        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(10px)', borderRadius: '20px', padding: '3px', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}>
           <button
             type="button"
-            className="rc-corner-btn"
-            aria-label="Course options"
-            onClick={() => setCornerMenuOpen((v) => !v)}
+            onClick={() => {
+              setIsRcLiveMode(false);
+              if (map && !autoSimPos) {
+                const center = map.getCenter();
+                const newPos = { lat: center.lat, lng: center.lng };
+                setSimulatedBoatPos(newPos);
+                localStorage.setItem('simulated_boat_pos', JSON.stringify(newPos));
+              }
+            }}
+            style={{ padding: '5px 12px', borderRadius: '16px', border: 'none', background: !isRcLiveMode ? 'var(--accent-blue)' : 'transparent', color: !isRcLiveMode ? 'white' : 'var(--text-secondary)', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', transition: 'all 0.2s ease' }}
           >
-            {cornerMenuOpen ? <X size={18} /> : <MoreHorizontal size={18} />}
+            Sim
           </button>
-          {cornerMenuOpen && (
-            <div className="rc-corner-menu">
-              <button type="button" onClick={handleSaveCourseClick}>
-                <Save size={15} /> Save
-              </button>
-              <button type="button" onClick={handleOpenCoursesList}>
-                <FolderOpen size={15} /> Open
-              </button>
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={() => setIsRcLiveMode(true)}
+            style={{ padding: '5px 12px', borderRadius: '16px', border: 'none', background: isRcLiveMode ? 'var(--accent-coral)' : 'transparent', color: isRcLiveMode ? 'white' : 'var(--text-secondary)', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', transition: 'all 0.2s ease' }}
+          >
+            Live
+          </button>
         </div>
       </div>
 
       {/* ── FAB stack ── */}
       <div className="rc-fab-stack" style={{ position: 'absolute' }}>
+        {/* Save/Open above connecting line */}
+        <button
+          type="button"
+          className="rc-course-line-btn"
+          title="Save Course"
+          onClick={handleSaveCourseClick}
+        >
+          <Save size={20} />
+        </button>
+        <button
+          type="button"
+          className="rc-course-line-btn"
+          title="Open Course"
+          onClick={handleOpenCoursesList}
+        >
+          <FolderOpen size={20} />
+        </button>
+
         {/* Course connecting line toggle */}
         <button
           type="button"
@@ -736,6 +973,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
           setBottomSheetExpanded(false);
         }}
         onReorder={handleReorder}
+        onRemove={removeCheckpoint}
       />
 
       {/* ── Open modal ── */}
@@ -812,21 +1050,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
           </div>
         </div>
       )}
-      {isAttributionModalOpen && (
-        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={() => setIsAttributionModalOpen(false)}>
-          <div className="modal-content" style={{ background: 'white', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '350px', boxShadow: 'var(--shadow-xl)' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-primary)' }}>Map Info</h3>
-              <button type="button" className="icon-action" onClick={() => setIsAttributionModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                <X size={20} />
-              </button>
-            </div>
-            <div className="modal-body" style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-              <p style={{ margin: 0 }}><strong>Leaflet</strong> | Seamarks &copy; <a href='http://www.openseamap.org' target="_blank" rel="noreferrer" style={{ color: 'var(--accent-blue)' }}>OpenSeaMap</a> contributors | Base map &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-blue)' }}>OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-blue)' }}>CARTO</a></p>
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }
