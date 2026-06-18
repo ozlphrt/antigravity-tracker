@@ -24,19 +24,69 @@ const createRotatedBoatIcon = (heading, color = '#33658A') => {
   });
 };
 
-const createAiBoatIcon = (heading, color, name) => new L.DivIcon({
-  html: `<div style="display:flex;flex-direction:column;align-items:center;gap:2px">
-    <div style="transform:rotate(${heading}deg);width:24px;height:24px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0px 3px 5px rgba(0,0,0,0.35))">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="#fff" stroke-width="2" stroke-linejoin="round" width="24" height="24">
-        <path d="M12 2 L19 21 Q12 18 5 21 Z" />
-      </svg>
-    </div>
-    <div style="background:${color};color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:6px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.3);letter-spacing:0.3px">${name}</div>
-  </div>`,
-  className: '',
-  iconSize: [60, 42],
-  iconAnchor: [30, 12],
-});
+const createAiBoatIcon = (heading, color, name, offset = 'bottom') => {
+  let flexDirection = 'column';
+  let anchorX = 40;
+  let anchorY = 12;
+  
+  if (offset === 'top') {
+    flexDirection = 'column-reverse';
+    anchorX = 40;
+    anchorY = 30;
+  } else if (offset === 'left') {
+    flexDirection = 'row-reverse';
+    anchorX = 68;
+    anchorY = 21;
+  } else if (offset === 'right') {
+    flexDirection = 'row';
+    anchorX = 12;
+    anchorY = 21;
+  }
+
+  return new L.DivIcon({
+    html: `<div style="display:flex;flex-direction:${flexDirection};align-items:center;gap:3px">
+      <div style="transform:rotate(${heading}deg);width:24px;height:24px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0px 3px 5px rgba(0,0,0,0.35))">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="#fff" stroke-width="2" stroke-linejoin="round" width="24" height="24">
+          <path d="M12 2 L19 21 Q12 18 5 21 Z" />
+        </svg>
+      </div>
+      <div style="background:${color};color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:6px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.3);letter-spacing:0.3px">${name}</div>
+    </div>`,
+    className: '',
+    iconSize: [80, 42],
+    iconAnchor: [anchorX, anchorY],
+  });
+};
+
+function getLabelOffset(boat, allBoats) {
+  let dx = 0;
+  let dy = 0;
+  const threshold = 0.0006; // ~60m
+
+  allBoats.forEach(other => {
+    if (other.id === boat.id) return;
+    const diffLat = other.lat - boat.lat;
+    const diffLng = other.lng - boat.lng;
+    const distSq = diffLat * diffLat + diffLng * diffLng;
+
+    if (distSq < threshold * threshold) {
+      const dist = Math.sqrt(distSq) || 0.0001;
+      const weight = (threshold - dist) / threshold;
+      dx -= (diffLng / dist) * weight;
+      dy -= (diffLat / dist) * weight;
+    }
+  });
+
+  if (Math.abs(dx) < 0.15 && Math.abs(dy) < 0.15) {
+    return 'bottom';
+  }
+
+  if (Math.abs(dx) > Math.abs(dy)) {
+    return dx > 0 ? 'right' : 'left';
+  } else {
+    return dy > 0 ? 'top' : 'bottom';
+  }
+}
 
 const finishBuoyIcon = new L.DivIcon({
   html: `<div style="background-color: var(--success-green); width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: var(--shadow-sm);"></div>`,
@@ -856,26 +906,33 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
         )}
         
         {/* AI fleet — always visible in sim mode */}
-        {aiBoats.map(boat => {
-          const trail = aiTrails[boat.id] || [];
-          return (
-            <React.Fragment key={boat.id}>
-              {trail.length > 1 && (
-                <Polyline
-                  positions={trail.map(p => [p.lat, p.lng])}
-                  color={boat.color}
-                  weight={2}
-                  opacity={0.45}
+        {(() => {
+          const allBoats = [
+            ...(activePos ? [{ id: 'user', lat: activePos.lat, lng: activePos.lng }] : []),
+            ...aiBoats
+          ];
+          return aiBoats.map(boat => {
+            const trail = aiTrails[boat.id] || [];
+            const offset = getLabelOffset(boat, allBoats);
+            return (
+              <React.Fragment key={boat.id}>
+                {trail.length > 1 && (
+                  <Polyline
+                    positions={trail.map(p => [p.lat, p.lng])}
+                    color={boat.color}
+                    weight={2}
+                    opacity={0.45}
+                  />
+                )}
+                <Marker
+                  position={[boat.lat, boat.lng]}
+                  icon={createAiBoatIcon(boat.heading, boat.color, boat.name, offset)}
+                  interactive={false}
                 />
-              )}
-              <Marker
-                position={[boat.lat, boat.lng]}
-                icon={createAiBoatIcon(boat.heading, boat.color, boat.name)}
-                interactive={false}
-              />
-            </React.Fragment>
-          );
-        })}
+              </React.Fragment>
+            );
+          });
+        })()}
 
         {/* Boat Heading Line & Marker */}
         {activePos && (() => {
