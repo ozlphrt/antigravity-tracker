@@ -336,11 +336,18 @@ export default function BoatPwa3D({ course, activePos, aiBoats = [], aiTrails = 
         tZ = cart.z;
       }
 
-      // Position camera at target buoy/checkpoint position, elevated slightly (25m high)
-      cameraPosRef.current.set(tX, 25, tZ);
+      // Position camera 35m behind the buoy along the line of sight, elevated 15m high, looking down at the boat
+      const dirX = tX - userCart.x;
+      const dirZ = tZ - userCart.z;
+      const len = Math.sqrt(dirX * dirX + dirZ * dirZ) || 1;
+      
+      const camX = tX + (dirX / len) * 35;
+      const camZ = tZ + (dirZ / len) * 35;
+      
+      cameraPosRef.current.set(camX, 15, camZ);
     } else {
       // Default fallback if race is finished
-      cameraPosRef.current.set(userCart.x, 40, userCart.z + 80);
+      cameraPosRef.current.set(userCart.x, 30, userCart.z + 60);
     }
 
   }, [activePos, aiBoats, aiTrails, trace, course, activeTargetIndex]);
