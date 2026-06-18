@@ -123,6 +123,32 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
           }
         }
 
+        // Sailboat tactical deviations:
+        // Instead of all taking the exact same line, boats tack/gybe or sail slightly higher/lower angles to gain speed
+        const boatIdx = AI_FLEET.findIndex(b => b.id === boat.id);
+        const timeSec = Date.now() / 1000;
+        
+        // Dynamic oscillation per boat (e.g. cycles between 20s and 45s)
+        const cyclePeriod = 20 + (boatIdx * 6.5);
+        const maxTackAngle = 18 + (boatIdx % 3) * 5; // 18 to 28 degrees deviation
+        const phaseShift = boatIdx * (Math.PI / 4.5);
+        
+        const wave = Math.sin((timeSec / cyclePeriod) * 2 * Math.PI + phaseShift);
+        
+        const tackAngle = wave * maxTackAngle;
+        
+        // Speed scaling: when heading off/hotter angle (weaving), speed increases (heeling/drift acceleration)
+        // Up to 25% speed fluctuation based on point-of-sail
+        const speedFactor = 0.95 + Math.abs(wave) * 0.25; 
+        const baseSpeed = 5.0 + (boatIdx % 4) * 0.4; // 5.0 to 6.2 knots base
+        const currentSpeed = baseSpeed * speedFactor;
+
+        // Dampen weaving as they approach the buoy/line (< 120m) to keep roundings precise
+        const distToTarget = turf.distance(boatPt, tPt, { units: 'kilometers' });
+        const weaveDampening = Math.min(distToTarget / 0.12, 1);
+        
+        desiredBearing = (desiredBearing + tackAngle * weaveDampening + 360) % 360;
+
         // Collision repulsion: push away from other boats within 40m
         let repulsionX = 0, repulsionY = 0;
         boatsRef.current.forEach(other => {
@@ -142,7 +168,7 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
 
         // Smooth turn toward desired bearing
         const normDesired = (desiredBearing + 360) % 360;
-        return { ...boat, targetHeading: normDesired };
+        return { ...boat, targetHeading: normDesired, speed: currentSpeed };
       });
     }, 100);
 
