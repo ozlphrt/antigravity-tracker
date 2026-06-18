@@ -310,6 +310,8 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
   const [lastSyncedTime, setLastSyncedTime] = useState(Date.now());
   const lastCapturedPos = useRef(null);
   
+  const activePos = isLiveMode && position ? position : simulatedPos;
+
   // Fleet simulation (9 AI boats — FYI only, does not affect user's HUD)
   const { boats: aiBoats, trails: aiTrails } = useFleetSim(course, !isLiveMode, activePos?.timeMultiplier || 20);
 
@@ -635,7 +637,6 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
     }
   }, [simulatedPos, isLiveMode]);
 
-  const activePos = isLiveMode && position ? position : simulatedPos;
   const minDistanceRef = useRef(Infinity);
   const closestSideRef = useRef(null);
   const lastPosRef = useRef(null);
