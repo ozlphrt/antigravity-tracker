@@ -970,6 +970,25 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           return (
             <React.Fragment>
               <Polyline positions={lineCoords} color="#33658A" weight={2} dashArray="5, 5" opacity={0.8} />
+              <CircleMarker 
+                center={[activePos.lat, activePos.lng]} 
+                radius={22} 
+                color="var(--accent-coral)" 
+                fillColor="var(--accent-coral)" 
+                fillOpacity={0.12} 
+                weight={2.5} 
+                dashArray="4, 5" 
+                interactive={false} 
+              />
+              <CircleMarker 
+                center={[activePos.lat, activePos.lng]} 
+                radius={3} 
+                color="var(--accent-coral)" 
+                fillColor="var(--accent-coral)" 
+                fillOpacity={1} 
+                stroke={false} 
+                interactive={false} 
+              />
               <Marker
           position={[activePos.lat, activePos.lng]}
           icon={createRotatedBoatIcon(activePos.heading)}
