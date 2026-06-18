@@ -24,83 +24,33 @@ const createRotatedBoatIcon = (heading, color = '#33658A') => {
   });
 };
 
-const createAiBoatIcon = (heading, color, name, offset = 'bottom', lineLength = 20) => {
-  let flexDirection = 'column';
-  let anchorX = 60;
-  let anchorY = 22;
-  let sizeX = 120;
-  let sizeY = 62 + lineLength;
-  
-  let lineStyle = `width: 2px; height: ${lineLength}px; background-color: ${color}; opacity: 0.8; border-radius: 1px;`;
-
-  if (offset === 'top') {
-    flexDirection = 'column-reverse';
-    anchorX = 60;
-    anchorY = 40 + lineLength;
-    sizeX = 120;
-    sizeY = 62 + lineLength;
-    lineStyle = `width: 2px; height: ${lineLength}px; background-color: ${color}; opacity: 0.8; border-radius: 1px;`;
-  } else if (offset === 'left') {
-    flexDirection = 'row-reverse';
-    anchorX = 82 + lineLength;
-    anchorY = 30;
-    sizeX = 104 + lineLength;
-    sizeY = 60;
-    lineStyle = `height: 2px; width: ${lineLength}px; background-color: ${color}; opacity: 0.8; border-radius: 1px;`;
-  } else if (offset === 'right') {
-    flexDirection = 'row';
-    anchorX = 22;
-    anchorY = 30;
-    sizeX = 104 + lineLength;
-    sizeY = 60;
-    lineStyle = `height: 2px; width: ${lineLength}px; background-color: ${color}; opacity: 0.8; border-radius: 1px;`;
-  }
+const createAiBoatIcon = (heading, color, name, angle = 0, lineLength = 20) => {
+  const rad = angle * Math.PI / 180;
+  const endX = 80 + lineLength * Math.cos(rad);
+  const endY = 80 + lineLength * Math.sin(rad);
 
   return new L.DivIcon({
-    html: `<div style="display:flex;flex-direction:${flexDirection};align-items:center;justify-content:center;width:100%;height:100%;gap:0">
-      <div style="transform:rotate(${heading}deg);width:24px;height:24px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0px 3px 5px rgba(0,0,0,0.35));flex-shrink:0">
+    html: `<div style="position:relative;width:100%;height:100%">
+      <!-- Connector Line -->
+      <div style="position:absolute;left:80px;top:79px;width:${lineLength}px;height:2px;background-color:${color};opacity:0.85;transform:rotate(${angle}deg);transform-origin:0 50%;z-index:1"></div>
+      
+      <!-- Label -->
+      <div style="position:absolute;left:${endX}px;top:${endY}px;transform:translate(-50%,-50%);background:${color};color:#fff;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 5px rgba(0,0,0,0.3);letter-spacing:0.3px;z-index:3">
+        ${name}
+      </div>
+      
+      <!-- Boat Icon -->
+      <div style="position:absolute;left:68px;top:68px;width:24px;height:24px;transform:rotate(${heading}deg);display:flex;align-items:center;justify-content:center;filter:drop-shadow(0px 3px 5px rgba(0,0,0,0.35));z-index:2;background:transparent">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="#fff" stroke-width="2" stroke-linejoin="round" width="24" height="24">
           <path d="M12 2 L19 21 Q12 18 5 21 Z" />
         </svg>
       </div>
-      <div style="${lineStyle};flex-shrink:0"></div>
-      <div style="background:${color};color:#fff;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 5px rgba(0,0,0,0.3);letter-spacing:0.3px;flex-shrink:0">${name}</div>
     </div>`,
     className: '',
-    iconSize: [sizeX, sizeY],
-    iconAnchor: [anchorX, anchorY],
+    iconSize: [160, 160],
+    iconAnchor: [80, 80],
   });
 };
-
-function getLabelOffset(boat, allBoats, defaultOffset = 'bottom') {
-  let dx = 0;
-  let dy = 0;
-  const threshold = 0.0006; // ~60m
-
-  allBoats.forEach(other => {
-    if (other.id === boat.id) return;
-    const diffLat = other.lat - boat.lat;
-    const diffLng = other.lng - boat.lng;
-    const distSq = diffLat * diffLat + diffLng * diffLng;
-
-    if (distSq < threshold * threshold) {
-      const dist = Math.sqrt(distSq) || 0.0001;
-      const weight = (threshold - dist) / threshold;
-      dx -= (diffLng / dist) * weight;
-      dy -= (diffLat / dist) * weight;
-    }
-  });
-
-  if (Math.abs(dx) < 0.15 && Math.abs(dy) < 0.15) {
-    return defaultOffset;
-  }
-
-  if (Math.abs(dx) > Math.abs(dy)) {
-    return dx > 0 ? 'right' : 'left';
-  } else {
-    return dy > 0 ? 'top' : 'bottom';
-  }
-}
 
 const finishBuoyIcon = new L.DivIcon({
   html: `<div style="background-color: var(--success-green); width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: var(--shadow-sm);"></div>`,
@@ -921,22 +871,14 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
         
         {/* AI fleet — always visible in sim mode */}
         {(() => {
-          const allBoats = [
-            ...(activePos ? [{ id: 'user', lat: activePos.lat, lng: activePos.lng }] : []),
-            ...aiBoats
-          ];
-          return aiBoats.map(boat => {
+          return aiBoats.map((boat, idx) => {
             const trail = aiTrails[boat.id] || [];
             
-            // Deterministic hash based on boat ID for staggering
-            const idHash = boat.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+            // Fan out label offset angles evenly across 360 degrees
+            const angle = (idx * 360) / aiBoats.length;
             
-            // Stagger default offsets between top and bottom
-            const defaultOffset = idHash % 2 === 0 ? 'bottom' : 'top';
-            const offset = getLabelOffset(boat, allBoats, defaultOffset);
-            
-            // Stagger line lengths to prevent overlapping labels at the same height
-            const lineLength = 12 + (idHash % 3) * 8; // 12px, 20px, 28px
+            // Stagger line lengths to give layered separation even for adjacent boats
+            const lineLength = 22 + (idx % 3) * 14; // 22px, 36px, 50px
             
             return (
               <React.Fragment key={boat.id}>
@@ -950,7 +892,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
                 )}
                 <Marker
                   position={[boat.lat, boat.lng]}
-                  icon={createAiBoatIcon(boat.heading, boat.color, boat.name, offset, lineLength)}
+                  icon={createAiBoatIcon(boat.heading, boat.color, boat.name, angle, lineLength)}
                   interactive={false}
                 />
               </React.Fragment>
