@@ -854,6 +854,28 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           />
         )}
         
+        {/* AI fleet — always visible in sim mode */}
+        {aiBoats.map(boat => {
+          const trail = aiTrails[boat.id] || [];
+          return (
+            <React.Fragment key={boat.id}>
+              {trail.length > 1 && (
+                <Polyline
+                  positions={trail.map(p => [p.lat, p.lng])}
+                  color={boat.color}
+                  weight={2}
+                  opacity={0.45}
+                />
+              )}
+              <Marker
+                position={[boat.lat, boat.lng]}
+                icon={createAiBoatIcon(boat.heading, boat.color, boat.name)}
+                interactive={false}
+              />
+            </React.Fragment>
+          );
+        })}
+
         {/* Boat Heading Line & Marker */}
         {activePos && (() => {
           const pt = turf.point([activePos.lng, activePos.lat]);
@@ -865,27 +887,6 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           ];
           return (
             <React.Fragment>
-              {/* AI fleet trails */}
-              {aiBoats.map(boat => {
-                const trail = aiTrails[boat.id] || [];
-                return (
-                  <React.Fragment key={boat.id}>
-                    {trail.length > 1 && (
-                      <Polyline
-                        positions={trail.map(p => [p.lat, p.lng])}
-                        color={boat.color}
-                        weight={2}
-                        opacity={0.45}
-                      />
-                    )}
-                    <Marker
-                      position={[boat.lat, boat.lng]}
-                      icon={createAiBoatIcon(boat.heading, boat.color, boat.name)}
-                      interactive={false}
-                    />
-                  </React.Fragment>
-                );
-              })}
               <Polyline positions={lineCoords} color="#33658A" weight={2} dashArray="5, 5" opacity={0.8} />
               <Marker
           position={[activePos.lat, activePos.lng]}
