@@ -24,41 +24,55 @@ const createRotatedBoatIcon = (heading, color = '#33658A') => {
   });
 };
 
-const createAiBoatIcon = (heading, color, name, offset = 'bottom') => {
+const createAiBoatIcon = (heading, color, name, offset = 'bottom', lineLength = 20) => {
   let flexDirection = 'column';
-  let anchorX = 40;
-  let anchorY = 12;
+  let anchorX = 60;
+  let anchorY = 22;
+  let sizeX = 120;
+  let sizeY = 62 + lineLength;
   
+  let lineStyle = `width: 2px; height: ${lineLength}px; background-color: ${color}; opacity: 0.8; border-radius: 1px;`;
+
   if (offset === 'top') {
     flexDirection = 'column-reverse';
-    anchorX = 40;
-    anchorY = 30;
+    anchorX = 60;
+    anchorY = 40 + lineLength;
+    sizeX = 120;
+    sizeY = 62 + lineLength;
+    lineStyle = `width: 2px; height: ${lineLength}px; background-color: ${color}; opacity: 0.8; border-radius: 1px;`;
   } else if (offset === 'left') {
     flexDirection = 'row-reverse';
-    anchorX = 68;
-    anchorY = 21;
+    anchorX = 82 + lineLength;
+    anchorY = 30;
+    sizeX = 104 + lineLength;
+    sizeY = 60;
+    lineStyle = `height: 2px; width: ${lineLength}px; background-color: ${color}; opacity: 0.8; border-radius: 1px;`;
   } else if (offset === 'right') {
     flexDirection = 'row';
-    anchorX = 12;
-    anchorY = 21;
+    anchorX = 22;
+    anchorY = 30;
+    sizeX = 104 + lineLength;
+    sizeY = 60;
+    lineStyle = `height: 2px; width: ${lineLength}px; background-color: ${color}; opacity: 0.8; border-radius: 1px;`;
   }
 
   return new L.DivIcon({
-    html: `<div style="display:flex;flex-direction:${flexDirection};align-items:center;gap:3px">
-      <div style="transform:rotate(${heading}deg);width:24px;height:24px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0px 3px 5px rgba(0,0,0,0.35))">
+    html: `<div style="display:flex;flex-direction:${flexDirection};align-items:center;justify-content:center;width:100%;height:100%;gap:0">
+      <div style="transform:rotate(${heading}deg);width:24px;height:24px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0px 3px 5px rgba(0,0,0,0.35));flex-shrink:0">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="#fff" stroke-width="2" stroke-linejoin="round" width="24" height="24">
           <path d="M12 2 L19 21 Q12 18 5 21 Z" />
         </svg>
       </div>
-      <div style="background:${color};color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:6px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.3);letter-spacing:0.3px">${name}</div>
+      <div style="${lineStyle};flex-shrink:0"></div>
+      <div style="background:${color};color:#fff;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 5px rgba(0,0,0,0.3);letter-spacing:0.3px;flex-shrink:0">${name}</div>
     </div>`,
     className: '',
-    iconSize: [80, 42],
+    iconSize: [sizeX, sizeY],
     iconAnchor: [anchorX, anchorY],
   });
 };
 
-function getLabelOffset(boat, allBoats) {
+function getLabelOffset(boat, allBoats, defaultOffset = 'bottom') {
   let dx = 0;
   let dy = 0;
   const threshold = 0.0006; // ~60m
@@ -78,7 +92,7 @@ function getLabelOffset(boat, allBoats) {
   });
 
   if (Math.abs(dx) < 0.15 && Math.abs(dy) < 0.15) {
-    return 'bottom';
+    return defaultOffset;
   }
 
   if (Math.abs(dx) > Math.abs(dy)) {
@@ -913,7 +927,17 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           ];
           return aiBoats.map(boat => {
             const trail = aiTrails[boat.id] || [];
-            const offset = getLabelOffset(boat, allBoats);
+            
+            // Deterministic hash based on boat ID for staggering
+            const idHash = boat.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+            
+            // Stagger default offsets between top and bottom
+            const defaultOffset = idHash % 2 === 0 ? 'bottom' : 'top';
+            const offset = getLabelOffset(boat, allBoats, defaultOffset);
+            
+            // Stagger line lengths to prevent overlapping labels at the same height
+            const lineLength = 12 + (idHash % 3) * 8; // 12px, 20px, 28px
+            
             return (
               <React.Fragment key={boat.id}>
                 {trail.length > 1 && (
@@ -926,7 +950,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
                 )}
                 <Marker
                   position={[boat.lat, boat.lng]}
-                  icon={createAiBoatIcon(boat.heading, boat.color, boat.name, offset)}
+                  icon={createAiBoatIcon(boat.heading, boat.color, boat.name, offset, lineLength)}
                   interactive={false}
                 />
               </React.Fragment>
