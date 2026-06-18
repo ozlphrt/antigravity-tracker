@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Circle, CircleMarker, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import { Circle, CircleMarker, MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import * as turf from '@turf/turf';
 import { Navigation, LocateFixed, Maximize, Plus, Minus, X, CircleDot, CornerUpLeft, CornerUpRight, Info } from 'lucide-react';
@@ -24,51 +24,16 @@ const createRotatedBoatIcon = (heading, color = '#33658A') => {
   });
 };
 
-const createAiBoatIcon = (heading, color, name, angle = 0, lineLength = 50) => {
-  const rad = angle * Math.PI / 180;
-  const endX = 120 + lineLength * Math.cos(rad);
-  const endY = 120 + lineLength * Math.sin(rad);
-
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-
-  let pathD = '';
-  if (Math.abs(cos) > Math.abs(sin)) {
-    // Horizontal dominant entry/exit
-    const dx1 = 15 * Math.sign(cos);
-    const dx2 = 15 * Math.sign(cos);
-    pathD = `M 120 120 L ${120 + dx1} 120 L ${endX - dx2} ${endY} L ${endX} ${endY}`;
-  } else {
-    // Vertical dominant entry/exit
-    const dy1 = 15 * Math.sign(sin);
-    const dy2 = 12 * Math.sign(sin);
-    pathD = `M 120 120 L 120 ${120 + dy1} L ${endX} ${endY - dy2} L ${endX} ${endY}`;
-  }
-
+const createAiBoatIcon = (heading, color) => {
   return new L.DivIcon({
-    html: `<div style="position:relative;width:100%;height:100%">
-      <!-- 3-Section SVG Connector Line -->
-      <svg style="position:absolute;left:0;top:0;width:240px;height:240px;pointer-events:none;z-index:1" xmlns="http://www.w3.org/2000/svg">
-        <path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.8" />
-        <!-- A tiny terminal dot for joint aesthetic -->
-        <circle cx="${endX}" cy="${endY}" r="2" fill="${color}" />
+    html: `<div style="transform: rotate(${heading}deg); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0px 3px 5px rgba(0,0,0,0.35));">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="#fff" stroke-width="2" stroke-linejoin="round" width="24" height="24">
+        <path d="M12 2 L19 21 Q12 18 5 21 Z" />
       </svg>
-      
-      <!-- Label -->
-      <div style="position:absolute;left:${endX}px;top:${endY}px;transform:translate(-50%,-50%);background:${color};color:#fff;font-size:9.5px;font-weight:700;padding:3px 7px;border-radius:6px;white-space:nowrap;box-shadow:0 3px 6px rgba(0,0,0,0.3);letter-spacing:0.3px;z-index:3;border:1px solid rgba(255,255,255,0.25)">
-        ${name}
-      </div>
-      
-      <!-- Boat Icon -->
-      <div style="position:absolute;left:108px;top:108px;width:24px;height:24px;transform:rotate(${heading}deg);display:flex;align-items:center;justify-content:center;filter:drop-shadow(0px 3px 5px rgba(0,0,0,0.35));z-index:2;background:transparent">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="#fff" stroke-width="2" stroke-linejoin="round" width="24" height="24">
-          <path d="M12 2 L19 21 Q12 18 5 21 Z" />
-        </svg>
-      </div>
     </div>`,
     className: '',
-    iconSize: [240, 240],
-    iconAnchor: [120, 120],
+    iconSize: [24, 24],
+    iconAnchor: [12, 12]
   });
 };
 
@@ -894,12 +859,6 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           return aiBoats.map((boat, idx) => {
             const trail = aiTrails[boat.id] || [];
             
-            // Fan out label offset angles evenly across 360 degrees
-            const angle = (idx * 360) / aiBoats.length;
-            
-            // Stagger line lengths to give layered separation even for adjacent boats
-            const lineLength = 55 + (idx % 3) * 20; // 55px, 75px, 95px
-            
             return (
               <React.Fragment key={boat.id}>
                 {trail.length > 1 && (
@@ -912,9 +871,13 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
                 )}
                 <Marker
                   position={[boat.lat, boat.lng]}
-                  icon={createAiBoatIcon(boat.heading, boat.color, boat.name, angle, lineLength)}
-                  interactive={false}
-                />
+                  icon={createAiBoatIcon(boat.heading, boat.color)}
+                  interactive={true}
+                >
+                  <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
+                    <span style={{ fontWeight: 700, fontSize: '11px', color: boat.color }}>{boat.name}</span>
+                  </Tooltip>
+                </Marker>
               </React.Fragment>
             );
           });
