@@ -109,7 +109,7 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
             if (pLat !== undefined) approachBearing = turf.bearing(turf.point([pLng, pLat]), tPt);
           }
           const isPort = (target.rounding || 'port').toLowerCase() === 'port';
-          const offsetPt = turf.destination(tPt, 0.025, approachBearing + (isPort ? 90 : -90), { units: 'kilometers' });
+          const offsetPt = turf.destination(tPt, 0.04, approachBearing + (isPort ? 90 : -90), { units: 'kilometers' });
           desiredBearing = turf.bearing(boatPt, offsetPt);
         } else {
           const arrowBearing = (getLineBearing(target) + 360) % 360;
@@ -192,7 +192,32 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
           } else if (kind === 'buoy') {
             const bPt = turf.point([newLng, newLat]);
             const tPt = turf.point([target.coord[1], target.coord[0]]);
-            if (turf.distance(bPt, tPt, { units: 'kilometers' }) < 0.06) {
+            const distToBuoy = turf.distance(bPt, tPt, { units: 'kilometers' });
+
+            // Check if we have passed the buoy plane (dot product of approach vector and boat position relative to buoy)
+            let hasPassed = false;
+            const prevTarget = targets2[tIdx - 1];
+            if (prevTarget) {
+              let pLat, pLng;
+              if (prevTarget.kind === 'buoy' && prevTarget.coord) { pLat = prevTarget.coord[0]; pLng = prevTarget.coord[1]; }
+              else if (prevTarget.coords) { pLat = (prevTarget.coords[0][0] + prevTarget.coords[1][0])/2; pLng = (prevTarget.coords[0][1] + prevTarget.coords[1][1])/2; }
+              
+              if (pLat !== undefined && pLng !== undefined) {
+                const vX = target.coord[1] - pLng;
+                const vY = target.coord[0] - pLat;
+                const wX = newLng - target.coord[1];
+                const wY = newLat - target.coord[0];
+                const dot = vX * wX + vY * wY;
+                if (dot > 0) {
+                  hasPassed = true;
+                }
+              }
+            } else {
+              hasPassed = true;
+            }
+
+            // We must be close to the buoy (under 80m) and have passed the plane, or be extremely close (20m safety fallback)
+            if ((hasPassed && distToBuoy < 0.08) || distToBuoy < 0.02) {
               targetIndexRef.current[boat.id] = tIdx + 1;
             }
           }
