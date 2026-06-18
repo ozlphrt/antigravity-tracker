@@ -47,7 +47,7 @@ function buildSpawnPositions(course) {
  * useFleetSim — drives 9 AI boats around the course.
  * Returns: boats array + trails map { boatId -> [{lat,lng}] }
  */
-export function useFleetSim(course, isSimMode) {
+export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
   const [boats, setBoats] = useState([]);
   const [trails, setTrails] = useState({});
   const boatsRef = useRef([]);  // mutable ref for the tight simulation loop
@@ -163,7 +163,7 @@ export function useFleetSim(course, isSimMode) {
 
         // Move
         const hdgRad = hdg * Math.PI / 180;
-        const dist = (boat.speed * 0.514444) * 0.05; // 50ms at speed knots
+        const dist = (boat.speed * timeMultiplier * 0.514444) * 0.05; // 50ms at speed knots (scaled by timeMultiplier)
         const newLat = boat.lat + (dist / 111111) * Math.cos(hdgRad);
         const newLng = boat.lng + (dist / (111111 * Math.cos(boat.lat * Math.PI / 180))) * Math.sin(hdgRad);
 
@@ -218,7 +218,7 @@ export function useFleetSim(course, isSimMode) {
       clearInterval(steerInterval);
       clearInterval(moveInterval);
     };
-  }, [course, isSimMode, boats.length]);
+  }, [course, isSimMode, timeMultiplier]);
 
   const resetFleet = useCallback(() => {
     if (!course) return;

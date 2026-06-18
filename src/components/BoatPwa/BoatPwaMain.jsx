@@ -311,7 +311,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
   const lastCapturedPos = useRef(null);
   
   // Fleet simulation (9 AI boats — FYI only, does not affect user's HUD)
-  const { boats: aiBoats, trails: aiTrails } = useFleetSim(course, !isLiveMode);
+  const { boats: aiBoats, trails: aiTrails } = useFleetSim(course, !isLiveMode, activePos?.timeMultiplier || 20);
 
   const [hasFinished, setHasFinished] = useState(false);
   const [isRaceFinishedModalOpen, setIsRaceFinishedModalOpen] = useState(false);
