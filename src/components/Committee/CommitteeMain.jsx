@@ -887,31 +887,6 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
       )}
 
       <div className="rc-corner-toolbar" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-        {/* Sim / Live toggle */}
-        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(10px)', borderRadius: '20px', padding: '3px', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 2px 8px rgba(0,0,0,0.12)' }}>
-          <button
-            type="button"
-            onClick={() => {
-              setIsRcLiveMode(false);
-              if (mapRef.current && !autoSimPos) {
-                const center = mapRef.current.getCenter();
-                const newPos = { lat: center.lat, lng: center.lng };
-                setSimulatedBoatPos(newPos);
-                localStorage.setItem('simulated_boat_pos', JSON.stringify(newPos));
-              }
-            }}
-            style={{ padding: '5px 12px', borderRadius: '16px', border: 'none', background: !isRcLiveMode ? 'var(--accent-blue)' : 'transparent', color: !isRcLiveMode ? 'white' : 'var(--text-secondary)', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', transition: 'all 0.2s ease' }}
-          >
-            Sim
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsRcLiveMode(true)}
-            style={{ padding: '5px 12px', borderRadius: '16px', border: 'none', background: isRcLiveMode ? 'var(--accent-coral)' : 'transparent', color: isRcLiveMode ? 'white' : 'var(--text-secondary)', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', transition: 'all 0.2s ease' }}
-          >
-            Live
-          </button>
-        </div>
       </div>
 
       {/* ── FAB stack ── */}

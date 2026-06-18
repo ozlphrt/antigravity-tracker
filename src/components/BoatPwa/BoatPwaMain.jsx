@@ -8,12 +8,13 @@ import { supabase } from '../../database/mockSupabase';
 import RaceLineMarker from '../RaceLineMarker';
 import TapeCompass from './TapeCompass';
 import InteractiveSeamarksLayer from '../InteractiveSeamarksLayer';
+import { useFleetSim } from './useFleetSim';
 
 // Dynamic rotated boat icon (top-down view)
-const createRotatedBoatIcon = (heading) => {
+const createRotatedBoatIcon = (heading, color = '#33658A') => {
   return new L.DivIcon({
     html: `<div style="transform: rotate(${heading}deg); width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.3));">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#33658A" stroke="#fff" stroke-width="2" stroke-linejoin="round" width="30" height="30">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="#fff" stroke-width="2" stroke-linejoin="round" width="30" height="30">
         <path d="M12 2 L19 21 Q12 18 5 21 Z" />
       </svg>
     </div>`,
@@ -22,6 +23,20 @@ const createRotatedBoatIcon = (heading) => {
     iconAnchor: [15, 15]
   });
 };
+
+const createAiBoatIcon = (heading, color, name) => new L.DivIcon({
+  html: `<div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+    <div style="transform:rotate(${heading}deg);width:24px;height:24px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0px 3px 5px rgba(0,0,0,0.35))">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="#fff" stroke-width="2" stroke-linejoin="round" width="24" height="24">
+        <path d="M12 2 L19 21 Q12 18 5 21 Z" />
+      </svg>
+    </div>
+    <div style="background:${color};color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:6px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.3);letter-spacing:0.3px">${name}</div>
+  </div>`,
+  className: '',
+  iconSize: [60, 42],
+  iconAnchor: [30, 12],
+});
 
 const finishBuoyIcon = new L.DivIcon({
   html: `<div style="background-color: var(--success-green); width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: var(--shadow-sm);"></div>`,
@@ -295,6 +310,9 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
   const [lastSyncedTime, setLastSyncedTime] = useState(Date.now());
   const lastCapturedPos = useRef(null);
   
+  // Fleet simulation (9 AI boats — FYI only, does not affect user's HUD)
+  const { boats: aiBoats, trails: aiTrails } = useFleetSim(course, !isLiveMode);
+
   const [hasFinished, setHasFinished] = useState(false);
   const [isRaceFinishedModalOpen, setIsRaceFinishedModalOpen] = useState(false);
   const [hasDownloadedRoute, setHasDownloadedRoute] = useState(false);
@@ -847,6 +865,27 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           ];
           return (
             <React.Fragment>
+              {/* AI fleet trails */}
+              {aiBoats.map(boat => {
+                const trail = aiTrails[boat.id] || [];
+                return (
+                  <React.Fragment key={boat.id}>
+                    {trail.length > 1 && (
+                      <Polyline
+                        positions={trail.map(p => [p.lat, p.lng])}
+                        color={boat.color}
+                        weight={2}
+                        opacity={0.45}
+                      />
+                    )}
+                    <Marker
+                      position={[boat.lat, boat.lng]}
+                      icon={createAiBoatIcon(boat.heading, boat.color, boat.name)}
+                      interactive={false}
+                    />
+                  </React.Fragment>
+                );
+              })}
               <Polyline positions={lineCoords} color="#33658A" weight={2} dashArray="5, 5" opacity={0.8} />
               <Marker
           position={[activePos.lat, activePos.lng]}
@@ -914,86 +953,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
             </button>
           </div>
 
-          {!isLiveMode && (
-            <div className="dir-buttons" style={{ margin: 0, gap: '4px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-              {/* Port steer */}
-              <div className="steer-wrapper">
-                <button
-                  className="steer-btn"
-                  onClick={() => {
-                    autoSteerOverrideUntil.current = Date.now() + 8000;
-                    setSimulatedPos(p => ({...p, targetHeading: (p.targetHeading !== undefined ? p.targetHeading : p.heading) - 10}));
-                  }}
-                  title="Steer Port"
-                >
-                  <svg viewBox="0 0 100 100" width="48" height="48" style={{ filter: 'drop-shadow(0 4px 4px rgba(0,0,0,0.4))' }}>
-                    <defs>
-                      <linearGradient id="redPlastic" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor="#ff8f8f" />
-                        <stop offset="30%" stopColor="#ef4444" />
-                        <stop offset="100%" stopColor="#991b1b" />
-                      </linearGradient>
-                    </defs>
-                    <polygon points="85,15 85,85 15,50" fill="url(#redPlastic)" stroke="#7f1d1d" strokeWidth="2" strokeLinejoin="round" />
-                    <polygon points="82,20 82,80 22,50" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="3" strokeLinejoin="round" />
-                    <text x="65%" y="50%" textAnchor="middle" fill="white" fontSize="28" fontWeight="bold" dy="0.35em">10</text>
-                  </svg>
-                </button>
-              </div>
-
-              {/* Auto steer button */}
-              <button
-                type="button"
-                onClick={() => {
-                  const next = !isAutoSteer;
-                  if (next) {
-                    autoSteerPhase.current = 'approach';
-                    upwindWaypointRef.current = null;
-                    autoSteerOverrideUntil.current = 0;
-                  }
-                  setIsAutoSteer(next);
-                }}
-                title={isAutoSteer ? 'Auto Steer ON — tap to disable' : 'Enable Auto Steer'}
-                style={{
-                  width: '48px', height: '40px', borderRadius: '8px', border: 'none',
-                  background: isAutoSteer ? 'var(--accent-coral)' : 'rgba(255,255,255,0.9)',
-                  color: isAutoSteer ? 'white' : 'var(--text-secondary)',
-                  fontWeight: 900, fontSize: '0.85rem', cursor: 'pointer',
-                  boxShadow: isAutoSteer ? '0 0 0 3px rgba(242,100,25,0.35), 0 4px 12px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0,0,0,0.18)',
-                  transition: 'all 0.2s ease',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0,
-                }}
-              >
-                AUTO
-              </button>
-
-              {/* Starboard steer */}
-              <div className="steer-wrapper">
-                <button
-                  className="steer-btn"
-                  onClick={() => {
-                    autoSteerOverrideUntil.current = Date.now() + 8000;
-                    setSimulatedPos(p => ({...p, targetHeading: (p.targetHeading !== undefined ? p.targetHeading : p.heading) + 10}));
-                  }}
-                  title="Steer Starboard"
-                >
-                  <svg viewBox="0 0 100 100" width="48" height="48" style={{ filter: 'drop-shadow(0 4px 4px rgba(0,0,0,0.4))' }}>
-                    <defs>
-                      <linearGradient id="greenPlastic" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stopColor="#6ee7b7" />
-                        <stop offset="30%" stopColor="#22c55e" />
-                        <stop offset="100%" stopColor="#14532d" />
-                      </linearGradient>
-                    </defs>
-                    <polygon points="15,15 15,85 85,50" fill="url(#greenPlastic)" stroke="#14532d" strokeWidth="2" strokeLinejoin="round" />
-                    <polygon points="18,20 18,80 78,50" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="3" strokeLinejoin="round" />
-                    <text x="35%" y="50%" textAnchor="middle" fill="white" fontSize="28" fontWeight="bold" dy="0.35em">10</text>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          )}
+        
         </div>
 
         <div className="helm-dashboard glass-panel" style={{ position: 'relative', bottom: 'auto', left: 'auto', transform: 'none', width: '100%', display: 'flex', flexDirection: 'column', gap: '8px', margin: 0 }}>
