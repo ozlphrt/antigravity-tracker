@@ -738,11 +738,13 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
         ref={mapRef}
         zoomControl={false}
         preferCanvas={true}
-        maxZoom={19}
+        maxZoom={22}
       >
         <MapControls pos={isRcLiveMode ? rcPosition : (autoSimPos || simulatedBoatPos)} autoCenter={autoCenter} setAutoCenter={setAutoCenter} />
         <TileLayer
           url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+          maxZoom={22}
+          maxNativeZoom={19}
         />
         <InteractiveSeamarksLayer />
         <MapRefCapture mapRef={mapRef} />

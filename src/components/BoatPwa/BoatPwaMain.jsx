@@ -853,9 +853,11 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
 
   return (
     <div className="map-container">
-      <MapContainer center={[37.015, 27.420]} zoom={14} zoomSnap={0.1} zoomControl={false} attributionControl={false} preferCanvas={true} style={{ width: '100%', height: '100%' }}>
+      <MapContainer center={[37.015, 27.420]} zoom={14} zoomSnap={0.1} maxZoom={22} zoomControl={false} attributionControl={false} preferCanvas={true} style={{ width: '100%', height: '100%' }}>
         <TileLayer
           url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+          maxZoom={22}
+          maxNativeZoom={19}
         />
         <InteractiveSeamarksLayer />
         <MapInvalidator />
