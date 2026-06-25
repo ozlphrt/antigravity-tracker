@@ -73,6 +73,17 @@ const lineEndpointHitIcon = (isActive) => new L.DivIcon({
   iconAnchor: [24, 24],
 });
 
+const createFloatingDeleteIcon = () => new L.DivIcon({
+  html: `<div style="background-color: var(--accent-coral); border: 2.5px solid white; color: white; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 6px rgba(0,0,0,0.3); transition: transform 0.2s ease; cursor: pointer;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;">
+      <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6" />
+    </svg>
+  </div>`,
+  className: '',
+  iconSize: [26, 26],
+  iconAnchor: [13, 13]
+});
+
 const createLineIdLabelIcon = (label, isSelected) => new L.DivIcon({
   html: `<div class="rc-line-id-label${isSelected ? ' is-selected' : ''}">${label}</div>`,
   className: 'rc-line-id-label-shell',
@@ -238,13 +249,17 @@ function PopupPositionTracker({ selectedCheckpoint, onPositionUpdate, onClear })
   return null;
 }
 
-/** Deselects on outside-click (tap on empty map) */
-function MapDeselectHandler({ onDeselect, fabOpen, closeFab }) {
+/** Deselects on outside-click (tap on empty map) or spawns buoy on double-click */
+function MapDeselectHandler({ onDeselect, fabOpen, closeFab, onMapDblClick }) {
   useMapEvents({
     click: () => {
       if (fabOpen) { closeFab(); return; }
       onDeselect();
     },
+    dblclick: (e) => {
+      const { lat, lng } = e.latlng;
+      onMapDblClick(lat, lng);
+    }
   });
   return null;
 }
@@ -542,12 +557,8 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     [draftCheckpoints, selectedCheckpointId],
   );
 
-  // ── Place element at map center ──
-  const placeAtCenter = useCallback((toolKind) => {
-    const map = mapRef.current;
-    if (!map) return;
-    const center = map.getCenter();
-
+  // ── Place element at specific coordinates or map center ──
+  const placeElement = useCallback((lat, lng, toolKind) => {
     let kind = toolKind;
     if (draftCheckpoints.length === 0) kind = 'start';
 
@@ -559,7 +570,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
           id: newId,
           kind: 'buoy',
           type: 'buoy',
-          coord: [center.lat, center.lng],
+          coord: [lat, lng],
           rounding: 'port',
         };
         return enforceCourseOrder([...prev, buoy]);
@@ -567,7 +578,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
       // Select after state settles
       setTimeout(() => {
         setDraftCheckpoints((prev) => {
-          const placed = prev.find((cp) => cp.kind === 'buoy' && cp.coord[0] === center.lat);
+          const placed = prev.find((cp) => cp.kind === 'buoy' && cp.coord[0] === lat && cp.coord[1] === lng);
           if (placed) selectCheckpoint(placed.id, null);
           return prev;
         });
@@ -576,8 +587,8 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
       // Line: place A ~60m west, B ~60m east
       const lngOffset = 0.0006;
       const coords = [
-        [center.lat, center.lng - lngOffset],
-        [center.lat, center.lng + lngOffset],
+        [lat, lng - lngOffset],
+        [lat, lng + lngOffset],
       ];
       setDraftCheckpoints((prev) => {
         const newId = createId(kind, prev);
@@ -594,6 +605,13 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
       });
     }
   }, [selectCheckpoint, draftCheckpoints]);
+
+  const placeAtCenter = useCallback((toolKind) => {
+    const map = mapRef.current;
+    if (!map) return;
+    const center = map.getCenter();
+    placeElement(center.lat, center.lng, toolKind);
+  }, [placeElement]);
 
   // ── Mutation helpers ──
   const updateRounding = (id, rounding) =>
@@ -739,6 +757,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
         zoomControl={false}
         preferCanvas={true}
         maxZoom={22}
+        doubleClickZoom={false}
       >
         <MapControls pos={isRcLiveMode ? rcPosition : (autoSimPos || simulatedBoatPos)} autoCenter={autoCenter} setAutoCenter={setAutoCenter} />
         <TileLayer
@@ -753,6 +772,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
           onDeselect={deselect}
           fabOpen={fabOpen}
           closeFab={() => setFabOpen(false)}
+          onMapDblClick={(lat, lng) => placeElement(lat, lng, 'buoy')}
         />
         <PopupPositionTracker
           selectedCheckpoint={selectedCheckpoint}
@@ -768,6 +788,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
           const isSelected = selectedCheckpoint?.id === checkpoint.id;
 
           if (checkpoint.kind === 'buoy') {
+            const deletePos = [checkpoint.coord[0] + 0.00012, checkpoint.coord[1] + 0.00016];
             return (
               <React.Fragment key={checkpoint.id}>
                 <Marker
@@ -778,6 +799,11 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                   opacity={selectedCheckpoint && !isSelected ? 0.4 : 1}
                   eventHandlers={{
                     click: (e) => { L.DomEvent.stopPropagation(e.originalEvent); selectCheckpoint(checkpoint.id, null); },
+                    dblclick: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      const nextRounding = checkpoint.rounding === 'port' ? 'starboard' : 'port';
+                      updateRounding(checkpoint.id, nextRounding);
+                    },
                     dragstart: () => {
                       selectCheckpoint(checkpoint.id, null);
                     },
@@ -789,11 +815,24 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                   }}
                 />
                 {isSelected && (
-                  <CircleMarker
-                    center={checkpoint.coord}
-                    radius={24}
-                    pathOptions={{ color: '#F26419', fillColor: '#F26419', fillOpacity: 0.08, weight: 3 }}
-                  />
+                  <>
+                    <CircleMarker
+                      center={checkpoint.coord}
+                      radius={24}
+                      pathOptions={{ color: '#F26419', fillColor: '#F26419', fillOpacity: 0.08, weight: 3 }}
+                    />
+                    <Marker
+                      position={deletePos}
+                      icon={createFloatingDeleteIcon()}
+                      zIndexOffset={1000}
+                      eventHandlers={{
+                        click: (e) => {
+                          L.DomEvent.stopPropagation(e.originalEvent);
+                          removeCheckpoint(checkpoint.id);
+                        }
+                      }}
+                    />
+                  </>
                 )}
               </React.Fragment>
             );
@@ -802,6 +841,8 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
           if (checkpoint.kind === 'start' || checkpoint.kind === 'finish' || checkpoint.kind === 'gate') {
             const selectionColor = checkpoint.kind === 'start' ? '#DCFCE7'
               : checkpoint.kind === 'finish' ? '#FECACA' : '#FFFFFF';
+            const midpoint = getLineMidpoint(checkpoint.coords);
+            const deletePos = [midpoint[0] + 0.00012, midpoint[1] + 0.00016];
 
             return (
               <React.Fragment key={checkpoint.id}>
@@ -826,7 +867,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                 {/* ID label chip above line midpoint */}
                 <Marker
                   key={`${checkpoint.id}-center`}
-                  position={getLineMidpoint(checkpoint.coords)}
+                  position={midpoint}
                   icon={createLineIdLabelIcon(checkpoint.id, isSelected)}
                   interactive={true}
                   draggable={true}
@@ -834,6 +875,11 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                   zIndexOffset={300}
                   eventHandlers={{
                     click: (e) => { L.DomEvent.stopPropagation(e.originalEvent); selectCheckpoint(checkpoint.id, null); },
+                    dblclick: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      const nextCrossing = checkpoint.crossing === 'up' ? 'down' : 'up';
+                      updateLineCrossing(checkpoint.id, nextCrossing);
+                    },
                     dragstart: () => {
                       selectCheckpoint(checkpoint.id, null);
                     },
@@ -848,6 +894,19 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                     }
                   }}
                 />
+                {isSelected && (
+                  <Marker
+                    position={deletePos}
+                    icon={createFloatingDeleteIcon()}
+                    zIndexOffset={1000}
+                    eventHandlers={{
+                      click: (e) => {
+                        L.DomEvent.stopPropagation(e.originalEvent);
+                        removeCheckpoint(checkpoint.id);
+                      }
+                    }}
+                  />
+                )}
                 {/* Draggable endpoint handles */}
                 {checkpoint.coords.map((point, index) => (
                   <LineEndpointMarker
