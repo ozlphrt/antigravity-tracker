@@ -679,6 +679,65 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     if (selectedCheckpointId === id) deselect();
   };
 
+  const startBuoyDrag = useCallback((id, initialCoord, startEvent) => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    map.dragging.disable();
+    if (map.doubleClickZoom) map.doubleClickZoom.disable();
+
+    const startLatLng = startEvent.latlng;
+
+    const onMouseMove = (e) => {
+      const dLat = e.latlng.lat - startLatLng.lat;
+      const dLng = e.latlng.lng - startLatLng.lng;
+      updateBuoyPosition(id, [initialCoord[0] + dLat, initialCoord[1] + dLng]);
+    };
+
+    const onMouseUp = () => {
+      map.off('mousemove', onMouseMove);
+      map.off('mouseup', onMouseUp);
+      map.off('dragend', onMouseUp);
+      map.dragging.enable();
+      if (map.doubleClickZoom) map.doubleClickZoom.enable();
+      selectCheckpoint(id, null);
+    };
+
+    map.on('mousemove', onMouseMove);
+    map.on('mouseup', onMouseUp);
+    map.on('dragend', onMouseUp);
+  }, [selectCheckpoint, updateBuoyPosition]);
+
+  const startLineDrag = useCallback((id, initialCoords, startEvent) => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    map.dragging.disable();
+    if (map.doubleClickZoom) map.doubleClickZoom.disable();
+
+    const startLatLng = startEvent.latlng;
+
+    const onMouseMove = (e) => {
+      const dLat = e.latlng.lat - startLatLng.lat;
+      const dLng = e.latlng.lng - startLatLng.lng;
+      const newCoords = initialCoords.map(p => [p[0] + dLat, p[1] + dLng]);
+      updateLineCoords(id, newCoords);
+    };
+
+    const onMouseUp = () => {
+      map.off('mousemove', onMouseMove);
+      map.off('mouseup', onMouseUp);
+      map.off('dragend', onMouseUp);
+      map.dragging.enable();
+      if (map.doubleClickZoom) map.doubleClickZoom.enable();
+      selectCheckpoint(id, null);
+    };
+
+    map.on('mousemove', onMouseMove);
+    map.on('mouseup', onMouseUp);
+    map.on('dragend', onMouseUp);
+  }, [selectCheckpoint, updateLineCoords]);
+
   const handleReorder = (activeId, overId) => {
     const trackingId = Math.random().toString();
     setDraftCheckpoints((items) => {
@@ -804,6 +863,10 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                       const nextRounding = checkpoint.rounding === 'port' ? 'starboard' : 'port';
                       updateRounding(checkpoint.id, nextRounding);
                     },
+                    mousedown: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      startBuoyDrag(checkpoint.id, checkpoint.coord, e);
+                    },
                     dragstart: () => {
                       selectCheckpoint(checkpoint.id, null);
                     },
@@ -862,6 +925,10 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                   interactive
                   eventHandlers={{
                     click: (e) => { L.DomEvent.stopPropagation(e.originalEvent); selectCheckpoint(checkpoint.id, null); },
+                    mousedown: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      startLineDrag(checkpoint.id, checkpoint.coords, e);
+                    }
                   }}
                 />
                 {/* ID label chip above line midpoint */}
@@ -879,6 +946,10 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                       L.DomEvent.stopPropagation(e.originalEvent);
                       const nextCrossing = checkpoint.crossing === 'up' ? 'down' : 'up';
                       updateLineCrossing(checkpoint.id, nextCrossing);
+                    },
+                    mousedown: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      startLineDrag(checkpoint.id, checkpoint.coords, e);
                     },
                     dragstart: () => {
                       selectCheckpoint(checkpoint.id, null);
