@@ -855,7 +855,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
     <div className="map-container">
       <MapContainer center={[37.015, 27.420]} zoom={14} zoomSnap={0.1} zoomControl={false} attributionControl={false} preferCanvas={true} style={{ width: '100%', height: '100%' }}>
         <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
         />
         <InteractiveSeamarksLayer />
         <MapInvalidator />

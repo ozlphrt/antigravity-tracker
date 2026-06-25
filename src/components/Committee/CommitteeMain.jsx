@@ -716,7 +716,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
       >
         <MapControls pos={isRcLiveMode ? rcPosition : (autoSimPos || simulatedBoatPos)} autoCenter={autoCenter} setAutoCenter={setAutoCenter} />
         <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
         />
         <InteractiveSeamarksLayer />
         <MapRefCapture mapRef={mapRef} />
