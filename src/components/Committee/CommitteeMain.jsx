@@ -773,13 +773,15 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                 <Marker
                   position={checkpoint.coord}
                   icon={createRoundingBuoyIcon(checkpoint.rounding, checkpoint.id)}
-                  draggable={isSelected}
-                  autoPan={isSelected}
+                  draggable={true}
+                  autoPan={true}
                   opacity={selectedCheckpoint && !isSelected ? 0.4 : 1}
                   eventHandlers={{
                     click: (e) => { L.DomEvent.stopPropagation(e.originalEvent); selectCheckpoint(checkpoint.id, null); },
+                    dragstart: () => {
+                      selectCheckpoint(checkpoint.id, null);
+                    },
                     dragend: (e) => {
-                      if (!isSelected) return;
                       const { lat, lng } = e.target.getLatLng();
                       updateBuoyPosition(checkpoint.id, [lat, lng]);
                     },
@@ -826,13 +828,15 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                   position={getLineMidpoint(checkpoint.coords)}
                   icon={createLineIdLabelIcon(checkpoint.id, isSelected)}
                   interactive={true}
-                  draggable={isSelected}
-                  autoPan={isSelected}
+                  draggable={true}
+                  autoPan={true}
                   zIndexOffset={300}
                   eventHandlers={{
                     click: (e) => { L.DomEvent.stopPropagation(e.originalEvent); selectCheckpoint(checkpoint.id, null); },
+                    dragstart: () => {
+                      selectCheckpoint(checkpoint.id, null);
+                    },
                     dragend: (e) => {
-                      if (!isSelected) return;
                       const { lat, lng } = e.target.getLatLng();
                       const oldMidpoint = getLineMidpoint(checkpoint.coords);
                       const dLat = lat - oldMidpoint[0];
