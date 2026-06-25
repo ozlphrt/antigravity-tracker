@@ -97,6 +97,7 @@ const createId = (type, checkpoints) => {
 };
 
 const normalizeCourseObjects = (checkpoints) => {
+  if (!checkpoints) return [];
   let buoyCount = 0;
   let gateCount = 0;
 
@@ -106,31 +107,56 @@ const normalizeCourseObjects = (checkpoints) => {
       || (checkpoint.id === 'finish' || checkpoint.id === 'F' ? 'finish' : null)
       || checkpoint.type;
 
+    let res;
     if (kind === 'buoy') {
       buoyCount += 1;
-      // Migration: old plain-number IDs → B-prefix
       const id = `B${buoyCount}`;
-      return { ...checkpoint, id, kind };
-    }
-
-    if (kind === 'gate') {
+      res = { ...checkpoint, id, kind };
+    } else if (kind === 'gate') {
       if (checkpoint.id === 'start' || checkpoint.id === 'finish') {
         const lineKind = checkpoint.id === 'start' ? 'start' : 'finish';
-        return withLineCheckpoint(checkpoint, lineKind, lineKind === 'start' ? 'S' : 'F');
+        res = withLineCheckpoint(checkpoint, lineKind, lineKind === 'start' ? 'S' : 'F');
+      } else {
+        gateCount += 1;
+        res = withLineCheckpoint(checkpoint, 'gate', `G${gateCount}`);
       }
-      gateCount += 1;
-      return withLineCheckpoint(checkpoint, 'gate', `G${gateCount}`);
+    } else if (kind === 'start' || kind === 'finish') {
+      res = withLineCheckpoint(checkpoint, kind, kind === 'start' ? 'S' : 'F');
+    } else {
+      res = {
+        ...checkpoint,
+        id: kind === 'start' ? 'S' : kind === 'finish' ? 'F' : checkpoint.id,
+        kind,
+      };
     }
 
-    if (kind === 'start' || kind === 'finish') {
-      return withLineCheckpoint(checkpoint, kind, kind === 'start' ? 'S' : 'F');
+    // Auto-generate coords for line/gate checkpoints if missing
+    if ((res.kind === 'start' || res.kind === 'finish' || res.kind === 'gate') && !res.coords) {
+      if (res.coord) {
+        const center = turf.point([res.coord[1], res.coord[0]]);
+        const width = res.width || 120;
+        const rotation = res.rotationDeg !== undefined ? res.rotationDeg : 270;
+        
+        const angleA = (rotation + 90) % 360;
+        const angleB = (rotation - 90 + 360) % 360;
+        const halfDistKm = (width / 2) / 1000;
+        
+        const ptA = turf.destination(center, halfDistKm, angleA, { units: 'kilometers' });
+        const ptB = turf.destination(center, halfDistKm, angleB, { units: 'kilometers' });
+        
+        res.coords = [
+          [ptA.geometry.coordinates[1], ptA.geometry.coordinates[0]],
+          [ptB.geometry.coordinates[1], ptB.geometry.coordinates[0]]
+        ];
+      } else {
+        res.coords = [
+          [37.0255, 27.4320],
+          [37.0255, 27.4330]
+        ];
+      }
     }
 
-    return {
-      ...checkpoint,
-      id: kind === 'start' ? 'S' : kind === 'finish' ? 'F' : checkpoint.id,
-      kind,
-    };
+    return res;
   });
 
   const lastStartIndex = normalized.findLastIndex((cp) => cp.kind === 'start');
