@@ -784,6 +784,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                     dragend: (e) => {
                       const { lat, lng } = e.target.getLatLng();
                       updateBuoyPosition(checkpoint.id, [lat, lng]);
+                      selectCheckpoint(checkpoint.id, null);
                     },
                   }}
                 />
@@ -824,7 +825,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                 />
                 {/* ID label chip above line midpoint */}
                 <Marker
-                  key={`${checkpoint.id}-center-${isSelected}`}
+                  key={`${checkpoint.id}-center`}
                   position={getLineMidpoint(checkpoint.coords)}
                   icon={createLineIdLabelIcon(checkpoint.id, isSelected)}
                   interactive={true}
@@ -843,6 +844,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                       const dLng = lng - oldMidpoint[1];
                       const newCoords = checkpoint.coords.map(p => [p[0] + dLat, p[1] + dLng]);
                       updateLineCoords(checkpoint.id, newCoords);
+                      selectCheckpoint(checkpoint.id, null);
                     }
                   }}
                 />
