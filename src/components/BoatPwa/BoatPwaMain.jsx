@@ -997,18 +997,18 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           const isSharpTurn = (vX * uX + vY * uY) < 0;
           const isFarSideCorrect = !isSharpTurn || (dotOut < 0);
 
-          if (entrancePassed && isFarSideCorrect) {
+          if ((entrancePassed && isFarSideCorrect) || distance < 0.045) {
             const crossIn = vX * wY - vY * wX;
             const rounding = (target.rounding || 'port').toLowerCase();
             const sideCorrect = rounding === 'port' ? (crossIn < 0) : (crossIn > 0);
-            if (sideCorrect) {
+            if (sideCorrect || distance < 0.045) {
               hasPassedEntranceRef.current = true;
             }
           }
         }
 
         // Check exit / completion
-        if (hasPassedEntranceRef.current && dotOut > 0) {
+        if (hasPassedEntranceRef.current && (dotOut > 0 || distance > 0.06)) {
           setActiveTargetIndex(prev => prev + 1);
           minDistanceRef.current = Infinity;
           closestSideRef.current = null;

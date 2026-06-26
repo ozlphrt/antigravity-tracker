@@ -15,6 +15,13 @@ const maplibreStyle = {
   },
   layers: [
     {
+      id: 'background-layer',
+      type: 'background',
+      paint: {
+        'background-color': '#08101f' // Matches the dark sea blue theme under loading tiles
+      }
+    },
+    {
       id: 'satellite-layer',
       type: 'raster',
       source: 'satellite'
@@ -48,9 +55,11 @@ export default function ThreeDMap({
       style: maplibreStyle,
       center: mapCenter,
       zoom: zoom - 1,
-      pitch: 60,
+      pitch: 55, // Slightly reduced pitch to request fewer tiles near the horizon
       bearing: -15,
-      antialias: true
+      antialias: true,
+      fadeDuration: 100, // Speed up tile fade-in duration
+      maxTileCacheSize: 120 // Cache more tiles in memory to prevent re-downloads
     });
 
     mapRef.current = map;
