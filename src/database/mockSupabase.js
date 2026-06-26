@@ -29,13 +29,8 @@ class MockSupabase {
         // Force upgrade course-1 if it was saved with old Bodrum Bay coordinates, is missing checkpoints, or is not near Karaada
         const c1Index = parsed.findIndex(c => c.id === 'course-1');
         if (c1Index >= 0) {
-          // If the name is the old "Karaada Offshore", update it to "Karaada Course" without overwriting checkpoints
-          if (parsed[c1Index].name === 'Karaada Offshore') {
-            parsed[c1Index].name = 'Karaada Course';
-            localStorage.setItem('rc_courses', JSON.stringify(parsed));
-          }
           const firstCp = parsed[c1Index].checkpoints?.[0];
-          if (!firstCp || !firstCp.coord || Math.abs(firstCp.coord[0] - 36.980) > 0.05 || parsed[c1Index].checkpoints.length === 0) {
+          if (!firstCp || !firstCp.coord || Math.abs(firstCp.coord[0] - 36.980) > 0.01 || parsed[c1Index].checkpoints.length === 0 || parsed[c1Index].name !== 'Karaada Course') {
             parsed[c1Index] = defaultCourse;
             localStorage.setItem('rc_courses', JSON.stringify(parsed));
           }
