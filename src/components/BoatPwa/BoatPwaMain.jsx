@@ -367,9 +367,8 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
     return { ...pos, heading: 180, targetHeading: 180, speed: 6.0, timeMultiplier: 20 };
   });
 
-  // If no saved position, auto-place the simulated boat behind the start line (500 m)
+  // Auto-place the simulated boat behind the start line if no saved position, or if saved position is >1.5 km away
   useEffect(() => {
-    if (localStorage.getItem('simulated_boat_pos')) return;
     if (!course) return;
     const isRaceTarget = (cp) => cp.kind === 'start' || cp.kind === 'buoy' || cp.kind === 'gate' || cp.kind === 'finish';
     const targets = course.checkpoints.filter(isRaceTarget);
@@ -379,6 +378,21 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
       const sLat = (startLine.coords[0][0] + startLine.coords[1][0]) / 2;
       const sLng = (startLine.coords[0][1] + startLine.coords[1][1]) / 2;
       const startPt = turf.point([sLng, sLat]);
+
+      const saved = localStorage.getItem('simulated_boat_pos');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          const distToStart = turf.distance(turf.point([parsed.lng, parsed.lat]), startPt, { units: 'kilometers' });
+          if (distToStart < 1.5) {
+            // Keep saved position if close to the start line
+            return;
+          }
+        } catch (e) {
+          // Parse error, reset position
+        }
+      }
+
       let courseBearing = 0;
       const nextMark = targets[startIdx + 1];
       if (nextMark) {

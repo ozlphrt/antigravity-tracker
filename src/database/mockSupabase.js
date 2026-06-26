@@ -26,11 +26,11 @@ class MockSupabase {
     if (storedCourses) {
       try {
         const parsed = JSON.parse(storedCourses);
-        // Force upgrade course-1 if it was saved with old Bodrum Bay coordinates or empty checkpoints
+        // Force upgrade course-1 if it was saved with old Bodrum Bay coordinates, is missing checkpoints, or is not near Karaada (36.98)
         const c1Index = parsed.findIndex(c => c.id === 'course-1');
         if (c1Index >= 0) {
           const firstCp = parsed[c1Index].checkpoints?.[0];
-          if (!firstCp || (firstCp.coord && Math.abs(firstCp.coord[0] - 37.0255) < 0.01) || parsed[c1Index].checkpoints.length === 0) {
+          if (!firstCp || !firstCp.coord || Math.abs(firstCp.coord[0] - 36.980) > 0.01 || parsed[c1Index].checkpoints.length === 0) {
             parsed[c1Index] = defaultCourse;
             localStorage.setItem('rc_courses', JSON.stringify(parsed));
           }
