@@ -10,20 +10,11 @@ class MockSupabase {
     };
     this.listeners = {};
     
-    const storedCourses = localStorage.getItem('rc_courses');
-    if (storedCourses) {
-      try {
-        let parsed = JSON.parse(storedCourses);
-        // Actively filter out the auto-created course-1 or any course named 'Karaada Course'/'Karaada Offshore'
-        parsed = parsed.filter(c => c.id !== 'course-1' && c.name !== 'Karaada Course' && c.name !== 'Karaada Offshore');
-        localStorage.setItem('rc_courses', JSON.stringify(parsed));
-        this.db.courses = parsed;
-      } catch (e) {
-        this.db.courses = [];
-      }
-    } else {
-      this.db.courses = [];
-    }
+    // Actively purge all previously saved courses and active course from localStorage
+    localStorage.removeItem('rc_courses');
+    localStorage.removeItem('rc_active_course_id');
+    localStorage.removeItem('simulated_boat_pos');
+    this.db.courses = [];
     
     this.db.boats.push({
       id: 'boat-1',
