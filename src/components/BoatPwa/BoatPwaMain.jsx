@@ -603,7 +603,15 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
       return;
     }
 
-    supabase.getCourses().then(courses => setCourse(normalizeCourse(courses[0])));
+    supabase.getCourses().then(courses => {
+      if (courses && courses.length > 0) {
+        const activeId = localStorage.getItem('rc_active_course_id');
+        const activeCourse = courses.find(c => c.id === activeId)
+          || courses.find(c => c.id === 'course-1')
+          || courses[0];
+        setCourse(normalizeCourse(activeCourse));
+      }
+    });
   }, [courseOverride]);
 
   // Auto-place Sim Boat 300m behind start line
