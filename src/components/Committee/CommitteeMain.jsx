@@ -32,7 +32,6 @@ import RaceLineMarker from '../RaceLineMarker';
 import { getLineLengthMeters, getLineMidpoint, lineCrossingLabel, normalizeLineCrossing } from '../../utils/raceLine';
 import ElementPopup from './ElementPopup';
 import CourseBottomSheet from './CourseBottomSheet';
-import InteractiveSeamarksLayer from '../InteractiveSeamarksLayer';
 import { useGpsTracker } from '../../hooks/useGpsTracker';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -45,7 +44,7 @@ const withLineCheckpoint = (checkpoint, kind, id) => ({
   crossing: normalizeLineCrossing(checkpoint.crossing),
 });
 
-const createRoundingBuoyIcon = (rounding, id = '') => {
+const createRoundingBuoyIcon = (rounding, id = '', isSelected = false) => {
   const isPort = rounding === 'port';
   const color = 'var(--accent-coral)';
   const svgPath = isPort
@@ -84,6 +83,13 @@ const createRoundingBuoyIcon = (rounding, id = '') => {
           </svg>
         </div>
         <div style="position:absolute;background:white;color:var(--text-primary);border:2px solid ${color};border-radius:50%;font-weight:900;font-size:13px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 4px rgba(0,0,0,0.35);">${id.replace(/\D/g, '')}</div>
+        ${isSelected ? `
+          <div style="position: absolute; top: -1px; right: -1px; background: #06b6d4; color: white; border: 1.5px solid white; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.25); z-index: 10;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/>
+            </svg>
+          </div>
+        ` : ''}
       </div>`,
     className: 'buoy-marker-icon-shell',
     iconSize: [52, 52],
@@ -92,7 +98,15 @@ const createRoundingBuoyIcon = (rounding, id = '') => {
 };
 
 const lineEndpointHitIcon = (isActive) => new L.DivIcon({
-  html: `<div class="line-endpoint-hit${isActive ? ' is-active' : ''}"></div>`,
+  html: `<div class="line-endpoint-hit${isActive ? ' is-active' : ''}">
+    ${isActive ? `
+      <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; color: var(--accent-coral);">
+        <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/>
+        </svg>
+      </div>
+    ` : ''}
+  </div>`,
   className: 'line-endpoint-hit-shell',
   iconSize: [48, 48],
   iconAnchor: [24, 24],
@@ -109,12 +123,21 @@ const createFloatingDeleteIcon = () => new L.DivIcon({
   iconAnchor: [13, 13]
 });
 
-const createLineIdLabelIcon = (label, isSelected) => new L.DivIcon({
-  html: `<div class="rc-line-id-label${isSelected ? ' is-selected' : ''}">${label}</div>`,
-  className: 'rc-line-id-label-shell',
-  iconSize: [48, 22],
-  iconAnchor: [24, 30], // anchors above the line midpoint
-});
+const createLineIdLabelIcon = (label, isSelected) => {
+  const arrowSvg = isSelected ? `
+    <span style="display: inline-flex; margin-right: 5px; color: #06b6d4; align-items: center;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/>
+      </svg>
+    </span>
+  ` : '';
+  return new L.DivIcon({
+    html: `<div class="rc-line-id-label${isSelected ? ' is-selected' : ''}">${arrowSvg}${label}</div>`,
+    className: 'rc-line-id-label-shell',
+    iconSize: [48, 22],
+    iconAnchor: [24, 30], // anchors above the line midpoint
+  });
+};
 
 const createId = (type, checkpoints) => {
   if (type === 'start') return 'S';
@@ -215,10 +238,7 @@ const attachLineLengths = (checkpoints) =>
   });
 
 const enforceCourseOrder = (checkpoints) => {
-  const start = checkpoints.filter((cp) => cp.kind === 'start');
-  const middle = checkpoints.filter((cp) => cp.kind !== 'start' && cp.kind !== 'finish');
-  const finish = checkpoints.filter((cp) => cp.kind === 'finish');
-  const ordered = [...start, ...middle, ...finish];
+  const ordered = checkpoints;
 
   // Auto-align line crossings towards the next checkpoint (or away from previous for finish) if not manually overridden
   for (let i = 0; i < ordered.length; i++) {
@@ -249,7 +269,7 @@ const enforceCourseOrder = (checkpoints) => {
              ? turf.bearing(ptRef, ptMid)
              : turf.bearing(ptMid, ptRef);
  
-           if (isFinish) {
+           if (isFinish && !cp.manualCoords) {
               const width = cp.width || 120;
               const rotation = desiredBearing;
               if (Math.abs((cp.rotationDeg || 0) - rotation) > 0.01) {
@@ -407,6 +427,9 @@ function LineEndpointMarker({ position, isActive, label, onSelect, onDragStart }
         },
         touchstart: (e) => {
           if (!isActive) return;
+          if (e.originalEvent?.cancelable) {
+            e.originalEvent.preventDefault();
+          }
           L.DomEvent.stopPropagation(e.originalEvent);
           onDragStart(e);
         }
@@ -820,7 +843,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
       if (cp.id !== id) return cp;
       const coords = cp.coords.map((p) => [...p]);
       coords[pointIndex][coordIndex] = value;
-      return { ...cp, coords };
+      return { ...cp, coords, manualCoords: true };
     }));
 
   const updateLinePoint = (id, pointIndex, point) =>
@@ -828,13 +851,13 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
       if (cp.id !== id) return cp;
       const coords = cp.coords.map((p) => [...p]);
       coords[pointIndex] = point;
-      return { ...cp, coords };
+      return { ...cp, coords, manualCoords: true };
     }));
 
   const updateLineCoords = (id, newCoords) =>
     setDraftCheckpoints((prev) => prev.map((cp) => {
       if (cp.id !== id) return cp;
-      return { ...cp, coords: newCoords };
+      return { ...cp, coords: newCoords, manualCoords: true };
     }));
 
   const removeCheckpoint = (id) => {
@@ -1085,7 +1108,6 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
           maxZoom={22}
           maxNativeZoom={19}
         />
-        <InteractiveSeamarksLayer />
         <MapRefCapture mapRef={mapRef} />
         <MapInvalidator />
         <MapDeselectHandler
@@ -1110,7 +1132,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
               <React.Fragment key={checkpoint.id}>
                 <Marker
                   position={checkpoint.coord}
-                  icon={createRoundingBuoyIcon(checkpoint.rounding, checkpoint.id)}
+                  icon={createRoundingBuoyIcon(checkpoint.rounding, checkpoint.id, isSelected)}
                   draggable={false}
                   opacity={selectedCheckpoint && !isSelected ? 0.4 : 1}
                   eventHandlers={{
@@ -1125,6 +1147,9 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
                       startBuoyDrag(checkpoint.id, checkpoint.coord, e);
                     },
                     touchstart: (e) => {
+                      if (e.originalEvent?.cancelable) {
+                        e.originalEvent.preventDefault();
+                      }
                       L.DomEvent.stopPropagation(e.originalEvent);
                       startBuoyDrag(checkpoint.id, checkpoint.coord, e);
                     },
@@ -1213,6 +1238,9 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
                       startLineDrag(checkpoint.id, checkpoint.coords, e);
                     },
                     touchstart: (e) => {
+                      if (e.originalEvent?.cancelable) {
+                        e.originalEvent.preventDefault();
+                      }
                       L.DomEvent.stopPropagation(e.originalEvent);
                       startLineDrag(checkpoint.id, checkpoint.coords, e);
                     },
@@ -1233,6 +1261,9 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
                       startLineDrag(checkpoint.id, checkpoint.coords, e);
                     },
                     touchstart: (e) => {
+                      if (e.originalEvent?.cancelable) {
+                        e.originalEvent.preventDefault();
+                      }
                       L.DomEvent.stopPropagation(e.originalEvent);
                       startLineDrag(checkpoint.id, checkpoint.coords, e);
                     },
@@ -1260,6 +1291,9 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
                       startLineDrag(checkpoint.id, checkpoint.coords, e);
                     },
                     touchstart: (e) => {
+                      if (e.originalEvent?.cancelable) {
+                        e.originalEvent.preventDefault();
+                      }
                       L.DomEvent.stopPropagation(e.originalEvent);
                       startLineDrag(checkpoint.id, checkpoint.coords, e);
                     },

@@ -53,18 +53,14 @@ function SortableRow({ checkpoint, isSelected, onSelect, onRemove }) {
       style={style}
       className={`checkpoint-item${isSelected ? ' selected' : ''}`}
     >
-      {/* Drag handle — only for non-singleton items */}
-      {checkpoint.kind !== 'start' && checkpoint.kind !== 'finish' ? (
-        <div
-          {...attributes}
-          {...listeners}
-          style={{ padding: '0 4px 0 0', cursor: 'grab', touchAction: 'none', display: 'flex', alignItems: 'center', flexShrink: 0 }}
-        >
-          <GripVertical size={16} color="#94a3b8" />
-        </div>
-      ) : (
-        <div style={{ width: '20px', flexShrink: 0 }} />
-      )}
+      {/* Drag handle — shown for all items to allow free reordering */}
+      <div
+        {...attributes}
+        {...listeners}
+        style={{ padding: '0 4px 0 0', cursor: 'grab', touchAction: 'none', display: 'flex', alignItems: 'center', flexShrink: 0 }}
+      >
+        <GripVertical size={16} color="#94a3b8" />
+      </div>
 
       <button
         type="button"

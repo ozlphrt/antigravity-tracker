@@ -1027,6 +1027,7 @@ main {
   box-sizing: border-box;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
   margin: 14px; /* perfectly centers a 20px circle inside a 48px hit shell */
+  position: relative;
   transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -1052,6 +1053,7 @@ main {
   filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.2));
   transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.2s ease;
   cursor: grab;
+  touch-action: none;
 }
 
 .leaflet-marker-icon:hover .course-buoy-icon {
@@ -1089,6 +1091,7 @@ body.dragging-active .leaflet-marker-icon {
 .race-line-icon-shell {
   background: transparent;
   border: none;
+  touch-action: none;
 }
 
 .race-line {
@@ -1222,6 +1225,7 @@ body.dragging-active .leaflet-marker-icon {
 .rc-line-id-label-shell {
   background: transparent;
   border: none;
+  touch-action: none;
 }
 
 .rc-line-id-label {
@@ -1240,6 +1244,7 @@ body.dragging-active .leaflet-marker-icon {
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.28);
   border: 1px solid rgba(255,255,255,0.14);
   letter-spacing: 0.04em;
+  touch-action: none;
 }
 
 /* Responsive — keep the RC map full height on all sizes */

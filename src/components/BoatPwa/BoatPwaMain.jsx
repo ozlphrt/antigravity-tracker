@@ -7,7 +7,6 @@ import { useGpsTracker } from '../../hooks/useGpsTracker';
 import { supabase } from '../../database/mockSupabase';
 import RaceLineMarker from '../RaceLineMarker';
 import TapeCompass from './TapeCompass';
-import InteractiveSeamarksLayer from '../InteractiveSeamarksLayer';
 import { useFleetSim } from './useFleetSim';
 
 // Dynamic rotated boat icon (top-down view)
@@ -372,10 +371,7 @@ const ensureCheckpointsHaveCoords = (checkpoints) => {
 };
 
 const enforceCourseOrder = (checkpoints) => {
-  const start = checkpoints.filter((cp) => cp.kind === 'start');
-  const middle = checkpoints.filter((cp) => cp.kind !== 'start' && cp.kind !== 'finish');
-  const finish = checkpoints.filter((cp) => cp.kind === 'finish');
-  const ordered = [...start, ...middle, ...finish];
+  const ordered = checkpoints;
 
   // Auto-align line crossings towards the next checkpoint (or away from previous for finish) if not manually overridden
   for (let i = 0; i < ordered.length; i++) {
@@ -411,7 +407,7 @@ const enforceCourseOrder = (checkpoints) => {
              ? turf.bearing(ptRef, ptMid)
              : turf.bearing(ptMid, ptRef);
  
-           if (isFinish) {
+           if (isFinish && !cp.manualCoords) {
              const width = cp.width || 120;
              const rotation = desiredBearing;
              if (Math.abs((cp.rotationDeg || 0) - rotation) > 0.01) {
@@ -1118,7 +1114,6 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           maxZoom={22}
           maxNativeZoom={19}
         />
-        <InteractiveSeamarksLayer />
         <MapInvalidator />
         <MapControls pos={activePos} autoCenter={autoCenter} setAutoCenter={setAutoCenter} />
         <Polyline positions={trace.map(p => [p.lat, p.lng])} color="#33658A" weight={3} opacity={0.6} />
