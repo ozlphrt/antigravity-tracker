@@ -8,6 +8,7 @@ import { supabase } from '../../database/mockSupabase';
 import RaceLineMarker from '../RaceLineMarker';
 import TapeCompass from './TapeCompass';
 import { useFleetSim } from './useFleetSim';
+import ThreeDMap from '../ThreeDMap';
 
 // Dynamic rotated boat icon (top-down view)
 const createRotatedBoatIcon = (heading, color = '#33658A') => {
@@ -457,6 +458,7 @@ const normalizeCourse = (courseObj) => {
 
 export default function BoatPwaMain({ courseOverride, onStatusChange, showDots = true }) {
   const [isLiveMode, setIsLiveMode] = useState(true);
+  const [is3dMode, setIs3dMode] = useState(false);
 
   // Callback for live GPS trace — runs inside useGpsTracker on each captured fix
   const liveTrackCallback = React.useCallback((point) => {
@@ -1106,165 +1108,204 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
 
   return (
     <div className="map-container">
-      <MapContainer center={[37.015, 27.420]} zoom={15.5} zoomSnap={0.1} maxZoom={22} zoomControl={false} attributionControl={false} preferCanvas={true} style={{ width: '100%', height: '100%', background: '#0b0f19' }}>
-        <MapInitialLocationCenterer />
-        <MapCourseFitter course={course} />
-        <TileLayer
-          url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-          maxZoom={22}
-          maxNativeZoom={19}
+      {is3dMode ? (
+        <ThreeDMap
+          checkpoints={course?.checkpoints || []}
+          boatPos={activePos}
+          fleet={aiBoats}
+          center={[activePos?.lat || 37.015, activePos?.lng || 27.420]}
+          zoom={15.5}
         />
-        <MapInvalidator />
-        <MapControls pos={activePos} autoCenter={autoCenter} setAutoCenter={setAutoCenter} />
-        <Polyline positions={trace.map(p => [p.lat, p.lng])} color="#33658A" weight={3} opacity={0.6} />
-        {showDots && trace.map((p, idx) => (
-          <CircleMarker key={`trace-${idx}`} center={[p.lat, p.lng]} radius={3} color="#33658A" fillColor="#33658A" fillOpacity={1} stroke={false} />
-        ))}
-        
-        {syncingQueue.length > 0 && (
-          <React.Fragment>
-            <Polyline 
-              positions={(trace.length > 0 ? [trace[trace.length - 1], ...syncingQueue] : syncingQueue).map(p => [p.lat, p.lng])} 
-              color="#EAB308" weight={3} opacity={0.8} 
-            />
-            {showDots && syncingQueue.map((p, idx) => (
-              <CircleMarker key={`sync-${idx}`} center={[p.lat, p.lng]} radius={3} color="#EAB308" fillColor="#EAB308" fillOpacity={1} stroke={false} />
-            ))}
-          </React.Fragment>
-        )}
-        
-        {offlineQueue.length > 0 && (
-          <React.Fragment>
-            <Polyline 
-              positions={(syncingQueue.length > 0 ? [syncingQueue[syncingQueue.length - 1], ...offlineQueue] : (trace.length > 0 ? [trace[trace.length - 1], ...offlineQueue] : offlineQueue)).map(p => [p.lat, p.lng])} 
-              color="#EF4444" weight={3} opacity={0.8} 
-            />
-            {showDots && offlineQueue.map((p, idx) => (
-              <CircleMarker key={`off-${idx}`} center={[p.lat, p.lng]} radius={3} color="#EF4444" fillColor="#EF4444" fillOpacity={1} stroke={false} />
-            ))}
-          </React.Fragment>
-        )}
-        
-        {/* Bearing Line to Active Target */}
-        {activePos && targetPos && targetName !== 'FINISHED' && (
-          <Polyline 
-            positions={[[activePos.lat, activePos.lng], targetPos]} 
-            color="#F26419" 
-            weight={3} 
-            dashArray="0, 10"
-            lineCap="round" 
-            opacity={0.6} 
+      ) : (
+        <MapContainer center={[37.015, 27.420]} zoom={15.5} zoomSnap={0.1} maxZoom={22} zoomControl={false} attributionControl={false} preferCanvas={true} style={{ width: '100%', height: '100%', background: '#0b0f19' }}>
+          <MapInitialLocationCenterer />
+          <MapCourseFitter course={course} />
+          <TileLayer
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            maxZoom={22}
+            maxNativeZoom={19}
           />
-        )}
-        
-        {/* AI fleet — always visible in sim mode */}
-        {(() => {
-          return aiBoats.map((boat, idx) => {
-            const trail = aiTrails[boat.id] || [];
-            
+          <MapInvalidator />
+          <MapControls pos={activePos} autoCenter={autoCenter} setAutoCenter={setAutoCenter} />
+          <Polyline positions={trace.map(p => [p.lat, p.lng])} color="#33658A" weight={3} opacity={0.6} />
+          {showDots && trace.map((p, idx) => (
+            <CircleMarker key={`trace-${idx}`} center={[p.lat, p.lng]} radius={3} color="#33658A" fillColor="#33658A" fillOpacity={1} stroke={false} />
+          ))}
+          
+          {syncingQueue.length > 0 && (
+            <React.Fragment>
+              <Polyline 
+                positions={(trace.length > 0 ? [trace[trace.length - 1], ...syncingQueue] : syncingQueue).map(p => [p.lat, p.lng])} 
+                color="#EAB308" weight={3} opacity={0.8} 
+              />
+              {showDots && syncingQueue.map((p, idx) => (
+                <CircleMarker key={`sync-${idx}`} center={[p.lat, p.lng]} radius={3} color="#EAB308" fillColor="#EAB308" fillOpacity={1} stroke={false} />
+              ))}
+            </React.Fragment>
+          )}
+          
+          {offlineQueue.length > 0 && (
+            <React.Fragment>
+              <Polyline 
+                positions={(syncingQueue.length > 0 ? [syncingQueue[syncingQueue.length - 1], ...offlineQueue] : (trace.length > 0 ? [trace[trace.length - 1], ...offlineQueue] : offlineQueue)).map(p => [p.lat, p.lng])} 
+                color="#EF4444" weight={3} opacity={0.8} 
+              />
+              {showDots && offlineQueue.map((p, idx) => (
+                <CircleMarker key={`off-${idx}`} center={[p.lat, p.lng]} radius={3} color="#EF4444" fillColor="#EF4444" fillOpacity={1} stroke={false} />
+              ))}
+            </React.Fragment>
+          )}
+          
+          {/* Bearing Line to Active Target */}
+          {activePos && targetPos && targetName !== 'FINISHED' && (
+            <Polyline 
+              positions={[[activePos.lat, activePos.lng], targetPos]} 
+              color="#F26419" 
+              weight={3} 
+              dashArray="0, 10"
+              lineCap="round" 
+              opacity={0.6} 
+            />
+          )}
+          
+          {/* AI fleet — always visible in sim mode */}
+          {(() => {
+            return aiBoats.map((boat, idx) => {
+              const trail = aiTrails[boat.id] || [];
+              
+              return (
+                <React.Fragment key={boat.id}>
+                  {trail.length > 1 && (
+                    <Polyline
+                      positions={trail.map(p => [p.lat, p.lng])}
+                      color={boat.color}
+                      weight={2}
+                      opacity={0.45}
+                    />
+                  )}
+                  <Marker
+                    position={[boat.lat, boat.lng]}
+                    icon={createAiBoatIcon(boat.heading, boat.color)}
+                    interactive={true}
+                    zIndexOffset={1000}
+                  >
+                    <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
+                      <span style={{ fontWeight: 700, fontSize: '11px', color: boat.color }}>{boat.name}</span>
+                    </Tooltip>
+                  </Marker>
+                </React.Fragment>
+              );
+            });
+          })()}
+
+          {/* Boat Heading Line & Marker */}
+          {activePos && (() => {
+            const pt = turf.point([activePos.lng, activePos.lat]);
+            // Draw a 1 km heading line (lengthened from 150m)
+            const dest = turf.destination(pt, 1.0, activePos.heading, { units: 'kilometers' }).geometry.coordinates;
+            const lineCoords = [
+              [activePos.lat, activePos.lng],
+              [dest[1], dest[0]]
+            ];
             return (
-              <React.Fragment key={boat.id}>
-                {trail.length > 1 && (
-                  <Polyline
-                    positions={trail.map(p => [p.lat, p.lng])}
-                    color={boat.color}
-                    weight={2}
-                    opacity={0.45}
-                  />
-                )}
+              <React.Fragment>
+                <Polyline positions={lineCoords} color="#33658A" weight={2} dashArray="5, 5" opacity={0.8} />
+                <CircleMarker 
+                  center={[activePos.lat, activePos.lng]} 
+                  radius={22} 
+                  color="var(--accent-coral)" 
+                  fillColor="var(--accent-coral)" 
+                  fillOpacity={0.12} 
+                  weight={2.5} 
+                  dashArray="4, 5" 
+                  interactive={false} 
+                />
+                <CircleMarker 
+                  center={[activePos.lat, activePos.lng]} 
+                  radius={3} 
+                  color="var(--accent-coral)" 
+                  fillColor="var(--accent-coral)" 
+                  fillOpacity={1} 
+                  stroke={false} 
+                  interactive={false} 
+                />
                 <Marker
-                  position={[boat.lat, boat.lng]}
-                  icon={createAiBoatIcon(boat.heading, boat.color)}
-                  interactive={true}
+                  position={[activePos.lat, activePos.lng]}
+                  icon={createRotatedBoatIcon(activePos.heading)}
+                  draggable={true}
                   zIndexOffset={1000}
-                >
-                  <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
-                    <span style={{ fontWeight: 700, fontSize: '11px', color: boat.color }}>{boat.name}</span>
-                  </Tooltip>
-                </Marker>
+                  eventHandlers={{
+                    dragend: (e) => {
+                      const { lat, lng } = e.target.getLatLng();
+                      const newPos = { ...activePos, lat, lng };
+                      setSimulatedPos(newPos);
+                      localStorage.setItem('simulated_boat_pos', JSON.stringify(newPos));
+                    },
+                  }}
+                />
               </React.Fragment>
             );
-          });
-        })()}
+          })()}
+          
+          {targetPos && targetRounding !== 'LINE' && targetName !== 'FINISHED' && (
+            <BuoyCircles targetPos={targetPos} />
+          )}
+          
+          {course && course.checkpoints.map((cp, idx) => {
+            const kind = getCheckpointKind(cp);
+            const isTarget = cp.id.toUpperCase() === targetName;
+            if (kind === 'buoy') {
+               let iconToUse = createStaticBuoyIcon(cp.rounding || 'port', cp.id);
+               if (isTarget) {
+                 iconToUse = createTargetBuoyIcon(cp.rounding || 'port', cp.id);
+               }
+               return <Marker key={idx} position={[cp.coord[0], cp.coord[1]]} icon={iconToUse} opacity={isTarget ? 1 : 0.6} zIndexOffset={-500} />;
+            } else if (kind === 'gate' || kind === 'start' || kind === 'finish') {
+               const lineKind = kind === 'finish' ? 'finish' : kind === 'start' ? 'start' : 'gate';
+               return (
+                 <RaceLineMarker
+                   key={idx}
+                   coords={cp.coords}
+                   kind={lineKind}
+                   crossing={cp.crossing}
+                   opacity={isTarget ? 1 : 0.4}
+                   zIndexOffset={-500}
+                 />
+               );
+            }
+            return null;
+          })}
+        </MapContainer>
+      )}
 
-        {/* Boat Heading Line & Marker */}
-        {activePos && (() => {
-          const pt = turf.point([activePos.lng, activePos.lat]);
-          // Draw a 1 km heading line (lengthened from 150m)
-          const dest = turf.destination(pt, 1.0, activePos.heading, { units: 'kilometers' }).geometry.coordinates;
-          const lineCoords = [
-            [activePos.lat, activePos.lng],
-            [dest[1], dest[0]]
-          ];
-          return (
-            <React.Fragment>
-              <Polyline positions={lineCoords} color="#33658A" weight={2} dashArray="5, 5" opacity={0.8} />
-              <CircleMarker 
-                center={[activePos.lat, activePos.lng]} 
-                radius={22} 
-                color="var(--accent-coral)" 
-                fillColor="var(--accent-coral)" 
-                fillOpacity={0.12} 
-                weight={2.5} 
-                dashArray="4, 5" 
-                interactive={false} 
-              />
-              <CircleMarker 
-                center={[activePos.lat, activePos.lng]} 
-                radius={3} 
-                color="var(--accent-coral)" 
-                fillColor="var(--accent-coral)" 
-                fillOpacity={1} 
-                stroke={false} 
-                interactive={false} 
-              />
-              <Marker
-          position={[activePos.lat, activePos.lng]}
-          icon={createRotatedBoatIcon(activePos.heading)}
-          draggable={true}
-          zIndexOffset={1000}
-          eventHandlers={{
-            dragend: (e) => {
-              const { lat, lng } = e.target.getLatLng();
-              const newPos = { ...activePos, lat, lng };
-              setSimulatedPos(newPos);
-              localStorage.setItem('simulated_boat_pos', JSON.stringify(newPos));
-            },
-          }}
-        />
-            </React.Fragment>
-          );
-        })()}
-        
-        {targetPos && targetRounding !== 'LINE' && targetName !== 'FINISHED' && (
-          <BuoyCircles targetPos={targetPos} />
-        )}
-        
-        {course && course.checkpoints.map((cp, idx) => {
-          const kind = getCheckpointKind(cp);
-          const isTarget = cp.id.toUpperCase() === targetName;
-          if (kind === 'buoy') {
-             let iconToUse = createStaticBuoyIcon(cp.rounding || 'port', cp.id);
-             if (isTarget) {
-               iconToUse = createTargetBuoyIcon(cp.rounding || 'port', cp.id);
-             }
-             return <Marker key={idx} position={[cp.coord[0], cp.coord[1]]} icon={iconToUse} opacity={isTarget ? 1 : 0.6} zIndexOffset={-500} />;
-          } else if (kind === 'gate' || kind === 'start' || kind === 'finish') {
-             const lineKind = kind === 'finish' ? 'finish' : kind === 'start' ? 'start' : 'gate';
-             return (
-               <RaceLineMarker
-                 key={idx}
-                 coords={cp.coords}
-                 kind={lineKind}
-                 crossing={cp.crossing}
-                 opacity={isTarget ? 1 : 0.4}
-                 zIndexOffset={-500}
-               />
-             );
-          }
-          return null;
-        })}
-      </MapContainer>
+      {/* 3D Mode Toggle Button */}
+      <button
+        onClick={() => setIs3dMode(!is3dMode)}
+        style={{
+          position: 'absolute',
+          top: '20px',
+          left: '20px',
+          zIndex: 1000,
+          background: 'rgba(15, 23, 42, 0.85)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255, 255, 255, 0.15)',
+          color: 'white',
+          padding: '10px 16px',
+          borderRadius: '24px',
+          fontWeight: 'bold',
+          fontSize: '0.85rem',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+          transition: 'all 0.2s ease',
+          pointerEvents: 'auto'
+        }}
+      >
+        <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: is3dMode ? '#06b6d4' : '#94a3b8' }} />
+        {is3dMode ? '3D Active' : 'Switch to 3D'}
+      </button>
 
       <div style={{ position: 'absolute', bottom: 'max(15px, env(safe-area-inset-bottom))', left: '50%', transform: 'translateX(-50%)', width: '90%', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 999 }}>
         <div className="simulator-panel" style={{ padding: '0 8px', background: 'transparent', boxShadow: 'none', border: 'none', position: 'relative', bottom: 'auto', right: 'auto', width: '100%', display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
