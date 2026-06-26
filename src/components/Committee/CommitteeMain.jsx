@@ -535,7 +535,7 @@ function MapControls({ pos, autoCenter, setAutoCenter }) {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-export default function CommitteeMain({ courseDraft, onCourseChange }) {
+export default function CommitteeMain({ courseDraft, onCourseChange, onStatusChange }) {
   const [course, setCourse] = useState(null);
   const [draftCheckpoints, setDraftCheckpoints] = useState([]);
   const [selectedCheckpointId, setSelectedCheckpointId] = useState(null);
@@ -548,6 +548,15 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
   const [isRcLiveMode, setIsRcLiveMode] = useState(true);
   const { position: rcPosition } = useGpsTracker('rc-1', isRcLiveMode);
   const [autoCenter, setAutoCenter] = useState(true);
+
+  useEffect(() => {
+    if (onStatusChange) {
+      onStatusChange({
+        state: isRcLiveMode && rcPosition ? 'online' : (isRcLiveMode ? 'searching' : 'offline'),
+        resolution: isRcLiveMode && rcPosition?.accuracy ? `± ${rcPosition.accuracy.toFixed(1)}m` : '± 4.2m (Sim)'
+      });
+    }
+  }, [isRcLiveMode, rcPosition, onStatusChange]);
 
   // Floating popup position (screen px within the map container)
   const [popupX, setPopupX] = useState(null);

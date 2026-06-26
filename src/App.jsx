@@ -11,20 +11,28 @@ import ReloadPrompt from './components/ReloadPrompt';
 function App() {
   const [activeModule, setActiveModule] = useState('boat'); // 'boat' or 'committee'
   const [boatStatus, setBoatStatus] = useState({ state: 'online', queueSize: 0, pointsRecorded: 0, lastSynced: null, resolution: '± 4.2m', collectionStatus: 'Active' });
+  const [committeeStatus, setCommitteeStatus] = useState({ state: 'online', resolution: '± 4.2m (Sim)' });
   const [designedCourse, setDesignedCourse] = useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showDots, setShowDots] = useState(true);
 
   const syncedPoints = boatStatus.pointsRecorded - boatStatus.queueSize;
-  const statusLabel = (boatStatus.state === 'syncing'
-    ? 'SYNCING...'
-    : boatStatus.state === 'buffering'
-      ? `BUFFERING`
-      : 'ONLINE') + ` (${syncedPoints}/${boatStatus.pointsRecorded || 0})`;
-
-  const statusClass = boatStatus.state === 'buffering'
+  
+  const displayStatus = activeModule === 'boat' ? boatStatus.state : committeeStatus.state;
+  
+  const statusClass = displayStatus === 'buffering' || displayStatus === 'offline'
     ? 'offline'
-    : boatStatus.state;
+    : (displayStatus === 'syncing' || displayStatus === 'searching'
+      ? 'syncing'
+      : 'online');
+
+  const statusLabel = activeModule === 'boat'
+    ? (boatStatus.state === 'syncing'
+      ? 'SYNCING...'
+      : boatStatus.state === 'buffering'
+        ? `BUFFERING`
+        : 'ONLINE') + ` (${syncedPoints}/${boatStatus.pointsRecorded || 0})`
+    : `RC: ${(committeeStatus.state || 'offline').toUpperCase()} (${committeeStatus.resolution || ''})`;
 
   return (
     <div className="app-container">
@@ -34,12 +42,10 @@ function App() {
             <span>BAYK</span>
             <span className="brand-suffix"> Tracker</span>
           </h1>
-          {activeModule === 'boat' && (
-            <div className={`header-status ${statusClass}`}>
-              <span className="status-dot" />
-              <span>{statusLabel}</span>
-            </div>
-          )}
+          <div className={`header-status ${statusClass}`}>
+            <span className="status-dot" />
+            <span>{statusLabel}</span>
+          </div>
         </div>
         <div className="module-toggle">
           <button 
@@ -69,7 +75,7 @@ function App() {
         {activeModule === 'boat' ? (
           <BoatPwaMain courseOverride={designedCourse} onStatusChange={setBoatStatus} showDots={showDots} />
         ) : (
-          <CommitteeMain courseDraft={designedCourse} onCourseChange={setDesignedCourse} />
+          <CommitteeMain courseDraft={designedCourse} onCourseChange={setDesignedCourse} onStatusChange={setCommitteeStatus} />
         )}
       </main>
 
