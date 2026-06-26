@@ -423,7 +423,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
   // Auto steer
   const [isAutoSteer, setIsAutoSteer] = useState(true);
   const autoSteerOverrideUntil = useRef(0); // timestamp until which override is active
-  const autoSteerPhase = useRef('approach'); // 'approach' | 'race'
+  const autoSteerPhase = useRef('race'); // 'approach' | 'race'
   const upwindWaypointRef = useRef(null);  // computed once per auto-steer activation
 
   // Telemetry & Offline State
@@ -465,7 +465,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
     lastCapturedPos.current = null;
     lastPosRef.current = null;
     setIsAutoSteer(!isLiveMode);
-    autoSteerPhase.current = 'approach';
+    autoSteerPhase.current = 'race';
     upwindWaypointRef.current = null;
   }, [isLiveMode]);
 
@@ -574,12 +574,12 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
                arrowBearing = lineBearing + (crossingSide === 'up' ? -90 : 90);
              }
              
-             // Approach point is 50m "behind" the line midpoint
+             // Approach point is 40m "behind" the line target point
              const reverseArrowBearing = (arrowBearing + 180) % 360;
-             const approachPt = turf.destination(tPt, 0.05, reverseArrowBearing, { units: 'kilometers' });
+             const approachPt = turf.destination(tPt, 0.04, reverseArrowBearing, { units: 'kilometers' });
              
              const distToApproach = turf.distance(boatPt, approachPt, { units: 'kilometers' });
-             if (distToApproach > 0.06) {
+             if (distToApproach > 0.03) {
                desiredBearing = turf.bearing(boatPt, approachPt);
              } else {
                desiredBearing = arrowBearing;

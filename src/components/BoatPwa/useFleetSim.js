@@ -102,14 +102,23 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
         if (!target) return boat; // finished
 
         const boatPt = turf.point([boat.lng, boat.lat]);
+        const boatIdx = AI_FLEET.findIndex(b => b.id === boat.id);
         let tLat, tLng;
         const kind = getCheckpointKind(target);
 
         if (kind === 'buoy') {
           tLat = target.coord[0]; tLng = target.coord[1];
         } else {
-          tLat = (target.coords[0][0] + target.coords[1][0]) / 2;
-          tLng = (target.coords[0][1] + target.coords[1][1]) / 2;
+          const ptA = turf.point([target.coords[0][1], target.coords[0][0]]);
+          const ptB = turf.point([target.coords[1][1], target.coords[1][0]]);
+          const lineLengthKm = turf.distance(ptA, ptB, { units: 'kilometers' });
+          const fraction = 0.25 + 0.5 * (Math.max(boatIdx, 0) / Math.max(AI_FLEET.length - 1, 1));
+          const targetPtOnLine = turf.along(turf.lineString([
+            [target.coords[0][1], target.coords[0][0]],
+            [target.coords[1][1], target.coords[1][0]]
+          ]), lineLengthKm * fraction, { units: 'kilometers' });
+          tLat = targetPtOnLine.geometry.coordinates[1];
+          tLng = targetPtOnLine.geometry.coordinates[0];
         }
         const tPt = turf.point([tLng, tLat]);
 
@@ -130,18 +139,17 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
         } else {
           const arrowBearing = (getLineBearing(target) + 360) % 360;
           const dist = turf.distance(boatPt, tPt, { units: 'kilometers' });
-          if (dist <= 0.2) {
+          if (dist <= 0.03) {
             desiredBearing = arrowBearing;
           } else {
             const reverseBearing = (arrowBearing + 180) % 360;
-            const approachPt = turf.destination(tPt, 0.1, reverseBearing, { units: 'kilometers' });
+            const approachPt = turf.destination(tPt, 0.04, reverseBearing, { units: 'kilometers' });
             desiredBearing = turf.bearing(boatPt, approachPt);
           }
         }
 
         // Sailboat tactical deviations:
         // Instead of all taking the exact same line, boats tack/gybe or sail slightly higher/lower angles to gain speed
-        const boatIdx = AI_FLEET.findIndex(b => b.id === boat.id);
         const timeSec = Date.now() / 1000;
         
         // Dynamic oscillation per boat (e.g. cycles between 20s and 45s)
@@ -179,7 +187,11 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
         });
         if (repulsionX !== 0 || repulsionY !== 0) {
           const repBearing = (Math.atan2(repulsionX, repulsionY) * 180 / Math.PI + 360) % 360;
-          desiredBearing = repBearing;
+          // Blend target bearing and repulsion bearing gently to avoid overriding the course target entirely
+          let diff = repBearing - desiredBearing;
+          while (diff <= -180) diff += 360;
+          while (diff > 180) diff -= 360;
+          desiredBearing = (desiredBearing + diff * 0.25 + 360) % 360;
         }
 
         // Smooth turn toward desired bearing

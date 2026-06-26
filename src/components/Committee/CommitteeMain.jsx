@@ -218,7 +218,57 @@ const enforceCourseOrder = (checkpoints) => {
   const start = checkpoints.filter((cp) => cp.kind === 'start');
   const middle = checkpoints.filter((cp) => cp.kind !== 'start' && cp.kind !== 'finish');
   const finish = checkpoints.filter((cp) => cp.kind === 'finish');
-  return [...start, ...middle, ...finish];
+  const ordered = [...start, ...middle, ...finish];
+
+  // Auto-align line crossings towards the next checkpoint (or away from previous for finish) if not manually overridden
+  for (let i = 0; i < ordered.length; i++) {
+    const cp = ordered[i];
+    if ((cp.kind === 'start' || cp.kind === 'gate' || cp.kind === 'finish') && cp.coords && !cp.manualCrossing) {
+      // Find reference checkpoint
+      let refCp = null;
+      const isFinish = cp.kind === 'finish';
+      if (isFinish) {
+        refCp = ordered[i - 1];
+      } else {
+        // Find first subsequent checkpoint that is not itself
+        refCp = ordered.slice(i + 1).find(c => c.id !== cp.id);
+      }
+
+      if (refCp) {
+        const cpMid = getLineMidpoint(cp.coords);
+        let refCoord = refCp.coord;
+        if (!refCoord && refCp.coords) {
+          refCoord = getLineMidpoint(refCp.coords);
+        }
+
+        if (refCoord) {
+          const ptMid = turf.point([cpMid[1], cpMid[0]]);
+          const ptRef = turf.point([refCoord[1], refCoord[0]]);
+          
+          const desiredBearing = isFinish 
+            ? turf.bearing(ptRef, ptMid)
+            : turf.bearing(ptMid, ptRef);
+
+          const ptA = turf.point([cp.coords[0][1], cp.coords[0][0]]);
+          const ptB = turf.point([cp.coords[1][1], cp.coords[1][0]]);
+          const lb = turf.bearing(ptA, ptB);
+
+          const bearingUp = (lb - 90 + 360) % 360;
+          const bearingDown = (lb + 90 + 360) % 360;
+
+          let diffUp = Math.abs(desiredBearing - bearingUp);
+          if (diffUp > 180) diffUp = 360 - diffUp;
+
+          let diffDown = Math.abs(desiredBearing - bearingDown);
+          if (diffDown > 180) diffDown = 360 - diffDown;
+
+          cp.crossing = diffUp < diffDown ? 'up' : 'down';
+        }
+      }
+    }
+  }
+
+  return ordered;
 };
 
 // ─── Map Child Components ────────────────────────────────────────────────────
@@ -695,7 +745,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
 
   const updateLineCrossing = (id, crossing) =>
     setDraftCheckpoints((prev) => prev.map((cp) =>
-      cp.id === id ? { ...cp, crossing: normalizeLineCrossing(crossing) } : cp,
+      cp.id === id ? { ...cp, crossing: normalizeLineCrossing(crossing), manualCrossing: true } : cp,
     ));
 
   const updateBuoyCoord = (id, coordIndex, value) =>
