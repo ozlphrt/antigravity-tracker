@@ -1282,9 +1282,8 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
         </MapContainer>
       )}
 
-      {/* 3D Mode Toggle Button */}
-      <button
-        onClick={() => setIs3dMode(!is3dMode)}
+      {/* 2D/3D Segmented Control Toggle */}
+      <div
         style={{
           position: 'absolute',
           top: '20px',
@@ -1293,23 +1292,51 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           background: 'rgba(15, 23, 42, 0.85)',
           backdropFilter: 'blur(8px)',
           border: '1px solid rgba(255, 255, 255, 0.15)',
-          color: 'white',
-          padding: '10px 16px',
-          borderRadius: '24px',
-          fontWeight: 'bold',
-          fontSize: '0.85rem',
-          cursor: 'pointer',
+          padding: '4px',
+          borderRadius: '20px',
           display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
+          gap: '2px',
           boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-          transition: 'all 0.2s ease',
           pointerEvents: 'auto'
         }}
       >
-        <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: is3dMode ? '#06b6d4' : '#94a3b8' }} />
-        {is3dMode ? '3D Active' : 'Switch to 3D'}
-      </button>
+        <button
+          type="button"
+          onClick={() => setIs3dMode(false)}
+          style={{
+            background: !is3dMode ? '#06b6d4' : 'transparent',
+            color: 'white',
+            border: 'none',
+            padding: '6px 14px',
+            borderRadius: '16px',
+            fontWeight: 'bold',
+            fontSize: '0.82rem',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          2D
+        </button>
+        <button
+          type="button"
+          onClick={() => setIs3dMode(true)}
+          style={{
+            background: is3dMode ? '#06b6d4' : 'transparent',
+            color: 'white',
+            border: 'none',
+            padding: '6px 14px',
+            borderRadius: '16px',
+            fontWeight: 'bold',
+            fontSize: '0.82rem',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          3D
+        </button>
+      </div>
 
       <div style={{ position: 'absolute', bottom: 'max(15px, env(safe-area-inset-bottom))', left: '50%', transform: 'translateX(-50%)', width: '90%', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 999 }}>
         <div className="simulator-panel" style={{ padding: '0 8px', background: 'transparent', boxShadow: 'none', border: 'none', position: 'relative', bottom: 'auto', right: 'auto', width: '100%', display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
