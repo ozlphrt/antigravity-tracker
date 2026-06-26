@@ -32,7 +32,11 @@ function App() {
       : boatStatus.state === 'buffering'
         ? `BUFFERING`
         : 'ONLINE') + ` (${syncedPoints}/${boatStatus.pointsRecorded || 0})`
-    : `RC: ${(committeeStatus.state || 'offline').toUpperCase()} (${committeeStatus.resolution || ''})`;
+    : `RC: ${(committeeStatus.state || 'offline').toUpperCase()}`;
+
+  const gpsLabel = activeModule === 'boat'
+    ? boatStatus.resolution || 'Searching...'
+    : committeeStatus.resolution || 'Searching...';
 
   return (
     <div className="app-container">
@@ -42,9 +46,15 @@ function App() {
             <span>BAYK</span>
             <span className="brand-suffix"> Tracker</span>
           </h1>
-          <div className={`header-status ${statusClass}`}>
-            <span className="status-dot" />
-            <span>{statusLabel}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px' }}>
+            <div className={`header-status ${statusClass}`}>
+              <span className="status-dot" />
+              <span>{statusLabel}</span>
+            </div>
+            <div className="header-gps" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.68rem', fontWeight: 800, color: 'var(--accent-blue)', background: 'rgba(0, 119, 182, 0.08)', padding: '2px 6px', borderRadius: '4px' }}>
+              <Satellite size={10} style={{ strokeWidth: 3 }} />
+              <span>{gpsLabel.toUpperCase()}</span>
+            </div>
           </div>
         </div>
         <div className="module-toggle">

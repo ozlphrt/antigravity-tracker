@@ -1437,3 +1437,16 @@ body.dragging-active .leaflet-marker-icon {
   background-color: var(--danger-red);
   box-shadow: 0 0 6px rgba(239, 35, 60, 0.6);
 }
+
+/* Ensure boat markers are always rendered on top of buoys and lines */
+.boat-marker-icon-shell {
+  z-index: 1000 !important;
+}
+
+.buoy-marker-icon-shell {
+  z-index: 200 !important;
+}
+
+.race-line-icon-shell {
+  z-index: 100 !important;
+}

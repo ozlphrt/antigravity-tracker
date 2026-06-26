@@ -45,9 +45,12 @@ function buildSpawnPositions(course) {
   const reverseBearing = (arrowBearing + 180 + 360) % 360;
   const perpBearing = (arrowBearing + 90 + 360) % 360;
 
-  // Spawn 300m behind start line, spread 50m apart laterally
+  const startWidth = startCp.width || 300;
+
+  // Spawn 300m behind start line, spread laterally to match their start line target fractions exactly
   return AI_FLEET.map((_, i) => {
-    const lateralOffset = (i - (AI_FLEET.length - 1) / 2) * 0.05; // km
+    const fraction = 0.25 + 0.5 * (i / (AI_FLEET.length - 1));
+    const lateralOffset = (fraction - 0.5) * (startWidth / 1000); // km offset from start line midpoint
     const behindPt = turf.destination(startPt, 0.3, reverseBearing, { units: 'kilometers' });
     const spawnPt = turf.destination(behindPt, Math.abs(lateralOffset), perpBearing * Math.sign(lateralOffset || 1), { units: 'kilometers' });
     return {
@@ -68,6 +71,9 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
   const boatsRef = useRef([]);  // mutable ref for the tight simulation loop
   const targetIndexRef = useRef({}); // { boatId -> activeTargetIndex }
   const lastPosRef = useRef({});     // { boatId -> {lat,lng} } for line intersection
+  const minDistanceRef = useRef({}); // { boatId -> minDistance }
+  const closestSideRef = useRef({});  // { boatId -> closestSide }
+  const hasPassedEntranceRef = useRef({}); // { boatId -> hasPassedEntrance }
 
   // Initialise boats when course becomes available
   useEffect(() => {
@@ -84,6 +90,9 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
     boatsRef.current = initial;
     targetIndexRef.current = Object.fromEntries(AI_FLEET.map(b => [b.id, 0]));
     lastPosRef.current = {};
+    minDistanceRef.current = Object.fromEntries(AI_FLEET.map(b => [b.id, Infinity]));
+    closestSideRef.current = Object.fromEntries(AI_FLEET.map(b => [b.id, null]));
+    hasPassedEntranceRef.current = Object.fromEntries(AI_FLEET.map(b => [b.id, false]));
     setBoats(initial);
     setTrails(Object.fromEntries(AI_FLEET.map(b => [b.id, []])));
   }, [course, isSimMode]);
@@ -132,18 +141,30 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
               approachBearing = turf.bearing(turf.point([prevCenter.lng, prevCenter.lat]), tPt);
             }
           }
+
+          let exitBearing = approachBearing;
+          const nextTarget = targets[tIdx + 1];
+          if (nextTarget) {
+            const nextCenter = getCheckpointCenter(nextTarget);
+            if (nextCenter) {
+              exitBearing = turf.bearing(tPt, turf.point([nextCenter.lng, nextCenter.lat]));
+            }
+          }
+
           const isPort = (target.rounding || 'port').toLowerCase() === 'port';
-          const offsetPt = turf.destination(tPt, 0.055, approachBearing + (isPort ? -90 : 90), { units: 'kilometers' });
+          const offsetBearing = hasPassedEntranceRef.current[boat.id]
+              ? (exitBearing + (isPort ? 90 : -90))
+              : (approachBearing + (isPort ? 90 : -90));
+
+          const offsetDistance = 0.040 + boatIdx * 0.007; // Staggered lanes from 40m to 96m
+          const offsetPt = turf.destination(tPt, offsetDistance, offsetBearing, { units: 'kilometers' });
           desiredBearing = turf.bearing(boatPt, offsetPt);
         } else {
-          const arrowBearing = (getLineBearing(target) + 360) % 360;
           const dist = turf.distance(boatPt, tPt, { units: 'kilometers' });
-          if (dist <= 0.03) {
-            desiredBearing = arrowBearing;
+          if (dist <= 0.12) {
+            desiredBearing = (getLineBearing(target) + 360) % 360;
           } else {
-            const reverseBearing = (arrowBearing + 180) % 360;
-            const approachPt = turf.destination(tPt, 0.04, reverseBearing, { units: 'kilometers' });
-            desiredBearing = turf.bearing(boatPt, approachPt);
+            desiredBearing = turf.bearing(boatPt, tPt);
           }
         }
 
@@ -202,6 +223,7 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
     const moveInterval = setInterval(() => {
       const newTrailPoints = {};
       boatsRef.current = boatsRef.current.map(boat => {
+        const boatIdx = AI_FLEET.findIndex(b => b.id === boat.id);
         // Turn
         let hdg = boat.heading;
         let targetHdg = boat.targetHeading ?? hdg;
@@ -240,39 +262,93 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
               ]);
               const intersects = turf.lineIntersect(boatPath, targetLine);
               if (intersects.features.length > 0) {
+                console.log(`Boat ${boat.id} crossed line ${target.id}!`);
                 targetIndexRef.current[boat.id] = tIdx + 1;
               }
-            } catch (_) { /* ignore geometry errors */ }
+            } catch (e) {
+              console.error(`Error in crossing check for boat ${boat.id}:`, e);
+            }
           } else if (kind === 'buoy') {
             const bPt = turf.point([newLng, newLat]);
             const tPt = turf.point([target.coord[1], target.coord[0]]);
-            const distToBuoy = turf.distance(bPt, tPt, { units: 'kilometers' });
+            const distance = turf.distance(bPt, tPt, { units: 'kilometers' });
 
-            let hasPassed = false;
-            let sideCorrect = true;
-            const prevTarget = targets2[tIdx - 1];
-            if (prevTarget) {
-              const prevCenter = getCheckpointCenter(prevTarget);
-              if (prevCenter) {
-                const vX = target.coord[1] - prevCenter.lng;
-                const vY = target.coord[0] - prevCenter.lat;
-                const wX = newLng - target.coord[1];
-                const wY = newLat - target.coord[0];
-                const dot = vX * wX + vY * wY;
-                if (dot > 0) {
-                  hasPassed = true;
-                  const cross = vX * wY - vY * wX;
-                  const isPort = (target.rounding || 'port').toLowerCase() === 'port';
-                  sideCorrect = isPort ? (cross < 0) : (cross > 0);
-                }
-              }
-            } else {
-              hasPassed = true;
+            const absoluteBearing = turf.bearing(bPt, tPt);
+            let relativeBearing = absoluteBearing - hdg;
+            while (relativeBearing <= -180) relativeBearing += 360;
+            while (relativeBearing > 180) relativeBearing -= 360;
+
+            const minD = minDistanceRef.current[boat.id] ?? Infinity;
+            if (distance < minD) {
+              minDistanceRef.current[boat.id] = distance;
+              closestSideRef.current[boat.id] = relativeBearing < 0 ? 'port' : 'starboard';
             }
 
-            // We must be close to the buoy (under 75m) and have passed the plane on the correct side
-            if (hasPassed && sideCorrect && distToBuoy < 0.075) {
+            // Find reference coordinates
+            const prevTarget = targets2[tIdx - 1];
+            const nextTarget = targets2[tIdx + 1];
+            
+            let prevCoord = prevTarget ? prevTarget.coord : null;
+            if (!prevCoord && prevTarget && prevTarget.coords) {
+              prevCoord = [
+                (prevTarget.coords[0][0] + prevTarget.coords[1][0]) / 2,
+                (prevTarget.coords[0][1] + prevTarget.coords[1][1]) / 2
+              ];
+            }
+            if (!prevCoord) {
+              const spawns = buildSpawnPositions(course);
+              prevCoord = spawns[boatIdx] ? [spawns[boatIdx].lat, spawns[boatIdx].lng] : [newLat, newLng];
+            }
+
+            let nextCoord = nextTarget ? nextTarget.coord : null;
+            if (!nextCoord && nextTarget && nextTarget.coords) {
+              nextCoord = [
+                (nextTarget.coords[0][0] + nextTarget.coords[1][0]) / 2,
+                (nextTarget.coords[0][1] + nextTarget.coords[1][1]) / 2
+              ];
+            }
+            if (!nextCoord) {
+              nextCoord = [target.coord[0], target.coord[1]]; // fallback
+            }
+
+            const vX = target.coord[1] - prevCoord[1];
+            const vY = target.coord[0] - prevCoord[0];
+            const uX = nextCoord[1] - target.coord[1];
+            const uY = nextCoord[0] - target.coord[0];
+            const wX = newLng - target.coord[1];
+            const wY = newLat - target.coord[0];
+
+            const dotIn = vX * wX + vY * wY;
+            const dotOut = uX * wX + uY * wY;
+
+            // Check entrance
+            const maxRoundingDist = 0.040 + boatIdx * 0.007 + 0.035; // offsetDistance + 35m tolerance
+            if (!hasPassedEntranceRef.current[boat.id]) {
+              const entrancePassed = dotIn > 0 && distance < maxRoundingDist;
+              const isSharpTurn = (vX * uX + vY * uY) < 0;
+              const isFarSideCorrect = !isSharpTurn || (dotOut < 0);
+
+              if (entrancePassed && isFarSideCorrect) {
+                const crossIn = vX * wY - vY * wX;
+                const rounding = (target.rounding || 'port').toLowerCase();
+                const sideCorrect = rounding === 'port' ? (crossIn < 0) : (crossIn > 0);
+                if (sideCorrect) {
+                  hasPassedEntranceRef.current[boat.id] = true;
+                }
+              }
+            }
+
+            // Check exit / completion
+            if (hasPassedEntranceRef.current[boat.id] && dotOut > 0) {
               targetIndexRef.current[boat.id] = tIdx + 1;
+              minDistanceRef.current[boat.id] = Infinity;
+              closestSideRef.current[boat.id] = null;
+              hasPassedEntranceRef.current[boat.id] = false;
+            } else if (distance > minDistanceRef.current[boat.id] + 0.1 && minDistanceRef.current[boat.id] < maxRoundingDist + 0.1 && !hasPassedEntranceRef.current[boat.id]) {
+              // If we passed the buoy (distance is increasing) but failed entrance check (wrong side),
+              // reset minDistance so we can circle back and try again
+              minDistanceRef.current[boat.id] = Infinity;
+              closestSideRef.current[boat.id] = null;
             }
           }
         }
@@ -313,6 +389,9 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
     boatsRef.current = reset;
     targetIndexRef.current = Object.fromEntries(AI_FLEET.map(b => [b.id, 0]));
     lastPosRef.current = {};
+    minDistanceRef.current = Object.fromEntries(AI_FLEET.map(b => [b.id, Infinity]));
+    closestSideRef.current = Object.fromEntries(AI_FLEET.map(b => [b.id, null]));
+    hasPassedEntranceRef.current = Object.fromEntries(AI_FLEET.map(b => [b.id, false]));
     setBoats(reset);
     setTrails(Object.fromEntries(AI_FLEET.map(b => [b.id, []])));
   }, [course]);

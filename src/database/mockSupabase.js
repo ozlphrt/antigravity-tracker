@@ -3,22 +3,51 @@
 
 class MockSupabase {
   constructor() {
+    this.listeners = {};
     this.db = {
       boats: [],
       courses: [],
       tracks: []
     };
+
+    const defaultCourse = {
+      id: 'course-bodrum-demo',
+      name: 'Bodrum Bay Demo',
+      checkpoints: [
+        { id: 'start', type: 'start', coord: [37.020, 27.430], width: 300, rotationDeg: 60, crossing: 'center' },
+        { id: 'buoy-1', type: 'buoy', coord: [37.008, 27.415], rounding: 'port' },
+        { id: 'buoy-2', type: 'buoy', coord: [37.012, 27.442], rounding: 'starboard' },
+        { id: 'finish', type: 'finish', coord: [37.018, 27.424], width: 300, rotationDeg: 60, crossing: 'center' }
+      ]
+    };
+
     const storedCourses = localStorage.getItem('rc_courses');
+    let coursesList = [];
     if (storedCourses) {
       try {
-        this.db.courses = JSON.parse(storedCourses);
+        coursesList = JSON.parse(storedCourses);
+        const demoIdx = coursesList.findIndex(c => c.id === 'course-bodrum-demo');
+        if (demoIdx >= 0) {
+          const demoCourse = coursesList[demoIdx];
+          const startCp = demoCourse.checkpoints?.find(cp => cp.id === 'start');
+          const finishCp = demoCourse.checkpoints?.find(cp => cp.id === 'finish');
+          if (!startCp || startCp.width !== 300 || startCp.rotationDeg !== 60 || !finishCp || finishCp.coord[0] === 37.020 || finishCp.coord[0] === 37.024) {
+            coursesList[demoIdx] = defaultCourse;
+            localStorage.setItem('rc_courses', JSON.stringify(coursesList));
+          }
+        } else {
+          coursesList.unshift(defaultCourse);
+          localStorage.setItem('rc_courses', JSON.stringify(coursesList));
+        }
       } catch (e) {
-        this.db.courses = [];
+        coursesList = [defaultCourse];
+        localStorage.setItem('rc_courses', JSON.stringify(coursesList));
       }
     } else {
-      this.db.courses = [];
-      this._saveToLocalStorage();
+      coursesList = [defaultCourse];
+      localStorage.setItem('rc_courses', JSON.stringify(coursesList));
     }
+    this.db.courses = coursesList;
     
     this.db.boats.push({
       id: 'boat-1',

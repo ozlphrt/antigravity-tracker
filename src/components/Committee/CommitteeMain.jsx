@@ -85,7 +85,7 @@ const createRoundingBuoyIcon = (rounding, id = '') => {
         </div>
         <div style="position:absolute;background:white;color:var(--text-primary);border:2px solid ${color};border-radius:50%;font-weight:900;font-size:13px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 4px rgba(0,0,0,0.35);">${id.replace(/\D/g, '')}</div>
       </div>`,
-    className: '',
+    className: 'buoy-marker-icon-shell',
     iconSize: [52, 52],
     iconAnchor: [26, 26],
   });
@@ -245,13 +245,28 @@ const enforceCourseOrder = (checkpoints) => {
           const ptMid = turf.point([cpMid[1], cpMid[0]]);
           const ptRef = turf.point([refCoord[1], refCoord[0]]);
           
-          const desiredBearing = isFinish 
-            ? turf.bearing(ptRef, ptMid)
-            : turf.bearing(ptMid, ptRef);
-
-          const ptA = turf.point([cp.coords[0][1], cp.coords[0][0]]);
-          const ptB = turf.point([cp.coords[1][1], cp.coords[1][0]]);
-          const lb = turf.bearing(ptA, ptB);
+           const desiredBearing = isFinish 
+             ? turf.bearing(ptRef, ptMid)
+             : turf.bearing(ptMid, ptRef);
+ 
+           if (isFinish) {
+             const width = cp.width || 120;
+             const rotation = desiredBearing;
+             const angleA = (rotation + 90) % 360;
+             const angleB = (rotation - 90 + 360) % 360;
+             const halfDistKm = (width / 2) / 1000;
+             const ptA = turf.destination(ptMid, halfDistKm, angleA, { units: 'kilometers' });
+             const ptB = turf.destination(ptMid, halfDistKm, angleB, { units: 'kilometers' });
+             cp.coords = [
+               [ptA.geometry.coordinates[1], ptA.geometry.coordinates[0]],
+               [ptB.geometry.coordinates[1], ptB.geometry.coordinates[0]]
+             ];
+             cp.rotationDeg = rotation;
+           }
+ 
+           const ptA = turf.point([cp.coords[0][1], cp.coords[0][0]]);
+           const ptB = turf.point([cp.coords[1][1], cp.coords[1][0]]);
+           const lb = turf.bearing(ptA, ptB);
 
           const bearingUp = (lb - 90 + 360) % 360;
           const bearingDown = (lb + 90 + 360) % 360;
@@ -278,11 +293,12 @@ function MapInitialLocationCenterer() {
   const centeredRef = useRef(false);
 
   useEffect(() => {
-    if (centeredRef.current) return;
+    if (centeredRef.current || window.__hasCenteredOnUser) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        if (centeredRef.current) return;
+        if (centeredRef.current || window.__hasCenteredOnUser) return;
         centeredRef.current = true;
+        window.__hasCenteredOnUser = true;
         map.setView([pos.coords.latitude, pos.coords.longitude], 15.5);
       },
       (err) => {
@@ -657,7 +673,14 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
   useEffect(() => {
     if (!course || !course.checkpoints || course.checkpoints.length === 0) return;
     if (lastFittedCourseIdRef.current === course.id) return;
+    
+    const isInitial = lastFittedCourseIdRef.current === null;
     lastFittedCourseIdRef.current = course.id;
+    
+    if (isInitial && window.__hasCenteredOnUser) {
+      return;
+    }
+    
     const fit = () => {
       if (!mapRef.current) return;
       const pts = [];
@@ -1268,7 +1291,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
               html: `<div style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.3));transform:rotate(0deg);">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#33658A" stroke="#fff" stroke-width="2" stroke-linejoin="round" width="30" height="30"><path d="M12 2 L19 21 Q12 18 5 21 Z"/></svg>
               </div>`,
-              className: '',
+              className: 'boat-marker-icon-shell',
               iconSize: [30, 30],
               iconAnchor: [15, 15],
             })}
@@ -1285,7 +1308,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
               html: `<div style=\"width:30px;height:30px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.3));\" title=\"${autoSimPos ? 'Auto-placed behind start line' : 'Drag to set Sim Start Position'}\">
                   <svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"#33658A\" stroke=\"#fff\" stroke-width=\"2\" stroke-linejoin=\"round\" width=\"30\" height=\"30\"><path d=\"M12 2 L19 21 Q12 18 5 21 Z\"/></svg>
                 </div>`,
-              className: '',
+              className: 'boat-marker-icon-shell',
               iconSize: [30, 30],
               iconAnchor: [15, 15],
             })}

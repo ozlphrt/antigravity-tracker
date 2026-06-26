@@ -18,7 +18,7 @@ const createRotatedBoatIcon = (heading, color = '#33658A') => {
         <path d="M12 2 L19 21 Q12 18 5 21 Z" />
       </svg>
     </div>`,
-    className: '',
+    className: 'boat-marker-icon-shell',
     iconSize: [30, 30],
     iconAnchor: [15, 15]
   });
@@ -31,7 +31,7 @@ const createAiBoatIcon = (heading, color) => {
         <path d="M12 2 L19 21 Q12 18 5 21 Z" />
       </svg>
     </div>`,
-    className: '',
+    className: 'boat-marker-icon-shell',
     iconSize: [24, 24],
     iconAnchor: [12, 12]
   });
@@ -72,7 +72,7 @@ const createStaticBuoyIcon = (rounding = 'port', id = '') => {
       </svg>
       <div style="position:absolute;background:white;color:var(--text-primary);border:2px solid ${color};border-radius:50%;font-weight:950;font-size:12px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 1.5px 4px rgba(0,0,0,0.35);">${id.replace(/\D/g, '')}</div>
     </div>`,
-    className: '',
+    className: 'buoy-marker-icon-shell',
     iconSize: [40, 40],
     iconAnchor: [20, 20],
   });
@@ -119,7 +119,7 @@ const createTargetBuoyIcon = (rounding, id = '') => {
         </div>
         <div style="position:absolute;background:white;color:var(--text-primary);border:2px solid ${color};border-radius:50%;font-weight:950;font-size:12px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 1.5px 4px rgba(0,0,0,0.35);">${id.replace(/\D/g, '')}</div>
       </div>`,
-    className: '',
+    className: 'buoy-marker-icon-shell',
     iconSize: [40, 40],
     iconAnchor: [20, 20]
   });
@@ -142,11 +142,12 @@ function MapInitialLocationCenterer() {
   const centeredRef = useRef(false);
 
   useEffect(() => {
-    if (centeredRef.current) return;
+    if (centeredRef.current || window.__hasCenteredOnUser) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        if (centeredRef.current) return;
+        if (centeredRef.current || window.__hasCenteredOnUser) return;
         centeredRef.current = true;
+        window.__hasCenteredOnUser = true;
         map.setView([pos.coords.latitude, pos.coords.longitude], 15.5);
       },
       (err) => {
@@ -167,7 +168,12 @@ function MapCourseFitter({ course }) {
     if (!course || !course.checkpoints || course.checkpoints.length === 0) return;
     if (lastFittedCourseIdRef.current === course.id) return;
     
+    const isInitial = lastFittedCourseIdRef.current === null;
     lastFittedCourseIdRef.current = course.id;
+    
+    if (isInitial && window.__hasCenteredOnUser) {
+      return;
+    }
     
     const pts = course.checkpoints.flatMap(cp => {
       if (cp.coords) return cp.coords;
@@ -365,11 +371,89 @@ const ensureCheckpointsHaveCoords = (checkpoints) => {
   });
 };
 
+const enforceCourseOrder = (checkpoints) => {
+  const start = checkpoints.filter((cp) => cp.kind === 'start');
+  const middle = checkpoints.filter((cp) => cp.kind !== 'start' && cp.kind !== 'finish');
+  const finish = checkpoints.filter((cp) => cp.kind === 'finish');
+  const ordered = [...start, ...middle, ...finish];
+
+  // Auto-align line crossings towards the next checkpoint (or away from previous for finish) if not manually overridden
+  for (let i = 0; i < ordered.length; i++) {
+    const cp = ordered[i];
+    if ((cp.kind === 'start' || cp.kind === 'gate' || cp.kind === 'finish') && cp.coords && !cp.manualCrossing) {
+      // Find reference checkpoint
+      let refCp = null;
+      const isFinish = cp.kind === 'finish';
+      if (isFinish) {
+        refCp = ordered[i - 1];
+      } else {
+        refCp = ordered.slice(i + 1).find(c => c.id !== cp.id);
+      }
+
+      if (refCp) {
+        const cpMid = [
+          (cp.coords[0][0] + cp.coords[1][0]) / 2,
+          (cp.coords[0][1] + cp.coords[1][1]) / 2,
+        ];
+        let refCoord = refCp.coord;
+        if (!refCoord && refCp.coords) {
+          refCoord = [
+            (refCp.coords[0][0] + refCp.coords[1][0]) / 2,
+            (refCp.coords[0][1] + refCp.coords[1][1]) / 2,
+          ];
+        }
+
+        if (refCoord) {
+          const ptMid = turf.point([cpMid[1], cpMid[0]]);
+          const ptRef = turf.point([refCoord[1], refCoord[0]]);
+          
+           const desiredBearing = isFinish 
+             ? turf.bearing(ptRef, ptMid)
+             : turf.bearing(ptMid, ptRef);
+ 
+           if (isFinish) {
+             const width = cp.width || 120;
+             const rotation = desiredBearing;
+             const angleA = (rotation + 90) % 360;
+             const angleB = (rotation - 90 + 360) % 360;
+             const halfDistKm = (width / 2) / 1000;
+             const ptA = turf.destination(ptMid, halfDistKm, angleA, { units: 'kilometers' });
+             const ptB = turf.destination(ptMid, halfDistKm, angleB, { units: 'kilometers' });
+             cp.coords = [
+               [ptA.geometry.coordinates[1], ptA.geometry.coordinates[0]],
+               [ptB.geometry.coordinates[1], ptB.geometry.coordinates[0]]
+             ];
+             cp.rotationDeg = rotation;
+           }
+ 
+           const ptA = turf.point([cp.coords[0][1], cp.coords[0][0]]);
+           const ptB = turf.point([cp.coords[1][1], cp.coords[1][0]]);
+           const lb = turf.bearing(ptA, ptB);
+
+          const bearingUp = (lb - 90 + 360) % 360;
+          const bearingDown = (lb + 90 + 360) % 360;
+
+          let diffUp = Math.abs(desiredBearing - bearingUp);
+          if (diffUp > 180) diffUp = 360 - diffUp;
+
+          let diffDown = Math.abs(desiredBearing - bearingDown);
+          if (diffDown > 180) diffDown = 360 - diffDown;
+
+          cp.crossing = diffUp < diffDown ? 'up' : 'down';
+        }
+      }
+    }
+  }
+
+  return ordered;
+};
+
 const normalizeCourse = (courseObj) => {
   if (!courseObj) return null;
+  const withCoords = ensureCheckpointsHaveCoords(courseObj.checkpoints);
   return {
     ...courseObj,
-    checkpoints: ensureCheckpointsHaveCoords(courseObj.checkpoints)
+    checkpoints: enforceCourseOrder(withCoords)
   };
 };
 
@@ -478,7 +562,6 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
     });
   }, [isSimOnline, isSyncing, offlineQueue.length, syncingQueue.length, trace.length, lastSyncedTime, isLiveMode, position, onStatusChange]);
 
-  // Reset trace and target index when switching between Live and Sim
   useEffect(() => {
     setTrace([]);
     setActiveTargetIndex(0);
@@ -489,6 +572,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
     setIsAutoSteer(!isLiveMode);
     autoSteerPhase.current = 'race';
     upwindWaypointRef.current = null;
+    hasPassedEntranceRef.current = false;
   }, [isLiveMode]);
 
   // ── Auto Steer ─────────────────────────────────────────────────────────────
@@ -577,34 +661,47 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
                  approachBearing = upwindWaypointRef.current ? turf.bearing(turf.point([upwindWaypointRef.current.lng, upwindWaypointRef.current.lat]), tPt) : 0;
              }
 
+             let exitBearing = approachBearing;
+             const nextTarget = targets[activeTargetIndex + 1];
+             if (nextTarget) {
+                 let ntLat, ntLng;
+                 if (nextTarget.kind === 'buoy' && nextTarget.coord) {
+                     ntLat = nextTarget.coord[0]; ntLng = nextTarget.coord[1];
+                 } else if (nextTarget.coords) {
+                     ntLat = (nextTarget.coords[0][0] + nextTarget.coords[1][0])/2;
+                     ntLng = (nextTarget.coords[0][1] + nextTarget.coords[1][1])/2;
+                 }
+                 if (ntLat !== undefined && ntLng !== undefined) {
+                     exitBearing = turf.bearing(tPt, turf.point([ntLng, ntLat]));
+                 }
+             }
+
              const isPort = (target.rounding || 'port').toLowerCase() === 'port';
-             const offsetBearing = approachBearing + (isPort ? -90 : 90);
+             const offsetBearing = hasPassedEntranceRef.current
+                 ? (exitBearing + (isPort ? 90 : -90))
+                 : (approachBearing + (isPort ? 90 : -90));
+
              // 25m offset to ensure we clear the buoy nicely
              const offsetTarget = turf.destination(tPt, 0.025, offsetBearing, { units: 'kilometers' });
              
              // Steer towards this FIXED offset target
              desiredBearing = turf.bearing(boatPt, offsetTarget);
           } else {
-             const ptA = turf.point([target.coords[0][1], target.coords[0][0]]);
-             const ptB = turf.point([target.coords[1][1], target.coords[1][0]]);
-             const crossingSide = target.crossing || 'up';
-             let arrowBearing = 0;
-             if (crossingSide === 'center') {
-               arrowBearing = target.rotationDeg || 0;
+             const dist = turf.distance(boatPt, tPt, { units: 'kilometers' });
+             if (dist <= 0.12) {
+                const ptA = turf.point([target.coords[0][1], target.coords[0][0]]);
+                const ptB = turf.point([target.coords[1][1], target.coords[1][0]]);
+                const crossingSide = target.crossing || 'up';
+                let arrowBearing = 0;
+                if (crossingSide === 'center') {
+                  arrowBearing = target.rotationDeg || 0;
+                } else {
+                   const lineBearing = turf.bearing(ptA, ptB);
+                   arrowBearing = (lineBearing + (crossingSide === 'up' ? -90 : 90) + 360) % 360;
+                }
+                desiredBearing = arrowBearing;
              } else {
-                const lineBearing = turf.bearing(ptA, ptB);
-                arrowBearing = (lineBearing + (crossingSide === 'up' ? -90 : 90) + 360) % 360;
-              }
-             
-             // Approach point is 40m "behind" the line target point
-             const reverseArrowBearing = (arrowBearing + 180) % 360;
-             const approachPt = turf.destination(tPt, 0.04, reverseArrowBearing, { units: 'kilometers' });
-             
-             const distToApproach = turf.distance(boatPt, approachPt, { units: 'kilometers' });
-             if (distToApproach > 0.03) {
-               desiredBearing = turf.bearing(boatPt, approachPt);
-             } else {
-               desiredBearing = arrowBearing;
+                desiredBearing = turf.bearing(boatPt, tPt);
              }
           }
         }
@@ -799,6 +896,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
   const minDistanceRef = useRef(Infinity);
   const closestSideRef = useRef(null);
   const lastPosRef = useRef(null);
+  const hasPassedEntranceRef = useRef(false);
 
   // Auto-advance to next buoy using Closest Point of Approach (CPA)
   useEffect(() => {
@@ -857,37 +955,69 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           }
         }
       } else {
-        // For buoys, we use CPA and rounding direction
-        let hasRoundedCorrectly = false;
-        const rounding = target.rounding ? target.rounding.toLowerCase() : 'line';
+        // Find reference coordinates
+        const prevTarget = targets[activeTargetIndex - 1];
+        const nextTarget = targets[activeTargetIndex + 1];
         
-        if (rounding === 'port') {
-          hasRoundedCorrectly = (relativeBearing < -135) && (closestSideRef.current === 'port');
-        } else if (rounding === 'starboard') {
-          hasRoundedCorrectly = (relativeBearing > 135) && (closestSideRef.current === 'starboard');
-        } else {
-          hasRoundedCorrectly = Math.abs(relativeBearing) > 135;
+        let prevCoord = prevTarget ? prevTarget.coord : null;
+        if (!prevCoord && prevTarget && prevTarget.coords) {
+          prevCoord = [
+            (prevTarget.coords[0][0] + prevTarget.coords[1][0]) / 2,
+            (prevTarget.coords[0][1] + prevTarget.coords[1][1]) / 2
+          ];
+        }
+        if (!prevCoord) {
+          prevCoord = upwindWaypointRef.current ? [upwindWaypointRef.current.lat, upwindWaypointRef.current.lng] : [activePos.lat, activePos.lng];
         }
 
-        if (minDistanceRef.current < 0.3 && hasRoundedCorrectly) {
-          if (activeTargetIndex < targets.length) {
-            setActiveTargetIndex(prev => prev + 1);
-            minDistanceRef.current = Infinity;
-            closestSideRef.current = null;
+        let nextCoord = nextTarget ? nextTarget.coord : null;
+        if (!nextCoord && nextTarget && nextTarget.coords) {
+          nextCoord = [
+            (nextTarget.coords[0][0] + nextTarget.coords[1][0]) / 2,
+            (nextTarget.coords[0][1] + nextTarget.coords[1][1]) / 2
+          ];
+        }
+        if (!nextCoord) {
+          nextCoord = [target.coord[0], target.coord[1]]; // fallback
+        }
+
+        const vX = target.coord[1] - prevCoord[1];
+        const vY = target.coord[0] - prevCoord[0];
+        const uX = nextCoord[1] - target.coord[1];
+        const uY = nextCoord[0] - target.coord[0];
+        const wX = activePos.lng - target.coord[1];
+        const wY = activePos.lat - target.coord[0];
+
+        const dotIn = vX * wX + vY * wY;
+        const dotOut = uX * wX + uY * wY;
+
+        // Check entrance
+        if (!hasPassedEntranceRef.current) {
+          const entrancePassed = dotIn > 0 && distance < 0.15;
+          const isSharpTurn = (vX * uX + vY * uY) < 0;
+          const isFarSideCorrect = !isSharpTurn || (dotOut < 0);
+
+          if (entrancePassed && isFarSideCorrect) {
+            const crossIn = vX * wY - vY * wX;
+            const rounding = (target.rounding || 'port').toLowerCase();
+            const sideCorrect = rounding === 'port' ? (crossIn < 0) : (crossIn > 0);
+            if (sideCorrect) {
+              hasPassedEntranceRef.current = true;
+            }
           }
-        } else if (distance > minDistanceRef.current + 0.1 && minDistanceRef.current < 0.4) {
-          let sideCorrect = true;
-          if (rounding === 'port') sideCorrect = closestSideRef.current === 'port';
-          if (rounding === 'starboard') sideCorrect = closestSideRef.current === 'starboard';
-          
-          if (sideCorrect && activeTargetIndex < targets.length) {
-            setActiveTargetIndex(prev => prev + 1);
-            minDistanceRef.current = Infinity;
-            closestSideRef.current = null;
-          } else if (!sideCorrect && distance > 0.2) {
-            minDistanceRef.current = Infinity;
-            closestSideRef.current = null;
-          }
+        }
+
+        // Check exit / completion
+        if (hasPassedEntranceRef.current && dotOut > 0) {
+          setActiveTargetIndex(prev => prev + 1);
+          minDistanceRef.current = Infinity;
+          closestSideRef.current = null;
+          hasPassedEntranceRef.current = false;
+        } else if (distance > minDistanceRef.current + 0.1 && minDistanceRef.current < 0.4 && !hasPassedEntranceRef.current) {
+          // If we passed the buoy (distance is increasing) but failed entrance check (wrong side),
+          // reset minDistance so we can circle back and try again
+          minDistanceRef.current = Infinity;
+          closestSideRef.current = null;
         }
       }
     }
@@ -1049,6 +1179,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
                   position={[boat.lat, boat.lng]}
                   icon={createAiBoatIcon(boat.heading, boat.color)}
                   interactive={true}
+                  zIndexOffset={1000}
                 >
                   <Tooltip direction="top" offset={[0, -10]} opacity={0.9}>
                     <span style={{ fontWeight: 700, fontSize: '11px', color: boat.color }}>{boat.name}</span>
@@ -1094,6 +1225,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           position={[activePos.lat, activePos.lng]}
           icon={createRotatedBoatIcon(activePos.heading)}
           draggable={true}
+          zIndexOffset={1000}
           eventHandlers={{
             dragend: (e) => {
               const { lat, lng } = e.target.getLatLng();
@@ -1119,7 +1251,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
              if (isTarget) {
                iconToUse = createTargetBuoyIcon(cp.rounding || 'port', cp.id);
              }
-             return <Marker key={idx} position={[cp.coord[0], cp.coord[1]]} icon={iconToUse} opacity={isTarget ? 1 : 0.6} />;
+             return <Marker key={idx} position={[cp.coord[0], cp.coord[1]]} icon={iconToUse} opacity={isTarget ? 1 : 0.6} zIndexOffset={-500} />;
           } else if (kind === 'gate' || kind === 'start' || kind === 'finish') {
              const lineKind = kind === 'finish' ? 'finish' : kind === 'start' ? 'start' : 'gate';
              return (
@@ -1129,6 +1261,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
                  kind={lineKind}
                  crossing={cp.crossing}
                  opacity={isTarget ? 1 : 0.4}
+                 zIndexOffset={-500}
                />
              );
           }
