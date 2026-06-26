@@ -137,6 +137,28 @@ const isRaceTarget = (checkpoint) => {
   return kind === 'start' || kind === 'buoy' || kind === 'gate' || kind === 'finish';
 };
 
+function MapInitialLocationCenterer() {
+  const map = useMap();
+  const centeredRef = useRef(false);
+
+  useEffect(() => {
+    if (centeredRef.current) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (centeredRef.current) return;
+        centeredRef.current = true;
+        map.setView([pos.coords.latitude, pos.coords.longitude], 15.5);
+      },
+      (err) => {
+        console.warn("Could not acquire initial geolocation", err);
+      },
+      { enableHighAccuracy: true, timeout: 5000 }
+    );
+  }, [map]);
+
+  return null;
+}
+
 function MapCourseFitter({ course }) {
   const map = useMap();
   const lastFittedCourseIdRef = useRef(null);
@@ -957,6 +979,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
   return (
     <div className="map-container">
       <MapContainer center={[37.015, 27.420]} zoom={15.5} zoomSnap={0.1} maxZoom={22} zoomControl={false} attributionControl={false} preferCanvas={true} style={{ width: '100%', height: '100%', background: '#0b0f19' }}>
+        <MapInitialLocationCenterer />
         <MapCourseFitter course={course} />
         <TileLayer
           url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"

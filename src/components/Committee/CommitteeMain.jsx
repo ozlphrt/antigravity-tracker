@@ -273,6 +273,28 @@ const enforceCourseOrder = (checkpoints) => {
 
 // ─── Map Child Components ────────────────────────────────────────────────────
 
+function MapInitialLocationCenterer() {
+  const map = useMap();
+  const centeredRef = useRef(false);
+
+  useEffect(() => {
+    if (centeredRef.current) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (centeredRef.current) return;
+        centeredRef.current = true;
+        map.setView([pos.coords.latitude, pos.coords.longitude], 15.5);
+      },
+      (err) => {
+        console.warn("Could not acquire initial geolocation", err);
+      },
+      { enableHighAccuracy: true, timeout: 5000 }
+    );
+  }, [map]);
+
+  return null;
+}
+
 /** Captures the Leaflet map instance into a ref */
 function MapRefCapture({ mapRef }) {
   const map = useMap();
@@ -1022,6 +1044,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
         maxZoom={22}
         doubleClickZoom={false}
       >
+        <MapInitialLocationCenterer />
         <MapControls pos={isRcLiveMode ? rcPosition : (autoSimPos || simulatedBoatPos)} autoCenter={autoCenter} setAutoCenter={setAutoCenter} />
         <TileLayer
           url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
