@@ -1113,6 +1113,10 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           checkpoints={course?.checkpoints || []}
           boatPos={activePos}
           fleet={aiBoats}
+          trace={trace}
+          aiTrails={aiTrails}
+          targetPos={targetPos}
+          targetName={targetName}
           center={[activePos?.lat || 37.015, activePos?.lng || 27.420]}
           zoom={15.5}
         />
