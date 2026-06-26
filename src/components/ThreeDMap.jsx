@@ -35,30 +35,27 @@ export default function ThreeDMap({
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
-  const markersRef = useRef({}); // Store active HTML markers (buoys, boats, line endpoints)
+  const markersRef = useRef({}); // Store active HTML markers (buoys, flat rings, endpoints, midpoints, boats)
 
   // Initialize Map
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
-    // Convert leaflet center [lat, lng] to maplibre [lng, lat]
     const mapCenter = [center[1], center[0]];
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: maplibreStyle,
       center: mapCenter,
-      zoom: zoom - 1, // MapLibre zoom is slightly different
-      pitch: 60, // Tilts the camera for 3D effect
+      zoom: zoom - 1,
+      pitch: 60,
       bearing: -15,
       antialias: true
     });
 
     mapRef.current = map;
 
-    // Load Terrain and 3D sky/fog effects on load
     map.on('load', () => {
-      // Add AWS Terrain-RGB DEM tiles source
       map.addSource('terrain-source', {
         type: 'raster-dem',
         tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
@@ -67,13 +64,11 @@ export default function ThreeDMap({
         maxzoom: 15
       });
 
-      // Enable 3D Terrain
       map.setTerrain({
         source: 'terrain-source',
-        exaggeration: 1.8 // Exaggerate elevation slightly for better visual validation
+        exaggeration: 1.8
       });
 
-      // Add a nice sky layer
       map.addLayer({
         id: 'sky',
         type: 'sky',
@@ -85,13 +80,11 @@ export default function ThreeDMap({
         }
       });
 
-      // Add Course GeoJSON sources and layers
       map.addSource('course-lines', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
       });
 
-      // Render course connection dashed line
       map.addLayer({
         id: 'course-connection-layer',
         type: 'line',
@@ -108,7 +101,6 @@ export default function ThreeDMap({
         }
       });
 
-      // Add Checkpoint Gates (Start, Gate, Finish Lines) GeoJSON source
       map.addSource('checkpoint-gates', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
@@ -129,7 +121,6 @@ export default function ThreeDMap({
         }
       });
 
-      // Add Boat Trails source and layer
       map.addSource('boat-trails', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
@@ -150,7 +141,6 @@ export default function ThreeDMap({
         }
       });
 
-      // Add Telemetry Sources and Layers
       map.addSource('telemetry-heading', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
@@ -160,7 +150,6 @@ export default function ThreeDMap({
         data: { type: 'FeatureCollection', features: [] }
       });
 
-      // Render Forward Heading Projection
       map.addLayer({
         id: 'telemetry-heading-layer',
         type: 'line',
@@ -177,7 +166,6 @@ export default function ThreeDMap({
         }
       });
 
-      // Render Dynamic Target Bearing Line
       map.addLayer({
         id: 'telemetry-bearing-layer',
         type: 'line',
@@ -195,14 +183,12 @@ export default function ThreeDMap({
       });
     });
 
-    // Add controls
     map.addControl(new maplibregl.NavigationControl({
       showCompass: true,
       visualizePitch: true
     }));
 
     return () => {
-      // Clean up markers
       Object.values(markersRef.current).forEach(m => m.remove());
       markersRef.current = {};
       map.remove();
@@ -221,13 +207,11 @@ export default function ThreeDMap({
           !map.getSource('telemetry-heading') ||
           !map.getSource('telemetry-bearing')) return;
 
-      // 1. Connection line sequence
       const connectionCoordinates = checkpoints
         .map(cp => {
           if (cp.kind === 'buoy' && cp.coord) {
             return [cp.coord[1], cp.coord[0]];
           } else if (cp.coords) {
-            // Midpoint of line
             const midLat = (cp.coords[0][0] + cp.coords[1][0]) / 2;
             const midLng = (cp.coords[0][1] + cp.coords[1][1]) / 2;
             return [midLng, midLat];
@@ -247,7 +231,6 @@ export default function ThreeDMap({
         }] : []
       });
 
-      // 2. Extruded lines (Start, Gate, Finish Lines)
       const gateFeatures = checkpoints
         .filter(cp => cp.kind !== 'buoy' && cp.coords)
         .map(cp => {
@@ -272,7 +255,6 @@ export default function ThreeDMap({
         features: gateFeatures
       });
 
-      // 3. User & Fleet Trails
       const trailFeatures = [];
 
       if (trace && trace.length > 1) {
@@ -307,7 +289,6 @@ export default function ThreeDMap({
         features: trailFeatures
       });
 
-      // 4. Telemetry (Heading Projection & Bearing Line)
       if (boatPos && boatPos.lat && boatPos.lng) {
         const userPt = turf.point([boatPos.lng, boatPos.lat]);
         const heading = boatPos.heading || 0;
@@ -360,28 +341,73 @@ export default function ThreeDMap({
     }
   }, [checkpoints, trace, aiTrails, boatPos, fleet, targetPos, targetName]);
 
-  // Update HTML Markers (Buoys, Endpoints and Boats)
+  // Update HTML Markers
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
     const newMarkers = {};
 
-    // 1. Render Buoys
+    // 1. Render Buoys (Flat Spinning Turn Ring + Billboard ID Badge)
     checkpoints.forEach(cp => {
       if (cp.kind !== 'buoy' || !cp.coord) return;
-      const key = `buoy-${cp.id}`;
+      
+      const isTarget = cp.id.toUpperCase() === targetName.toUpperCase();
+      const isPort = (cp.rounding || 'port').toLowerCase() === 'port';
+      const ringColor = isTarget ? '#f26419' : (isPort ? '#ef4444' : '#22c55e');
+      const speed = isTarget ? '3.5s' : '5s';
+      const animName = `spin-${cp.id}`;
+      const svgPath = isPort 
+        ? `<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>` 
+        : `<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>`;
 
-      let marker = markersRef.current[key];
-      if (!marker) {
+      // A. Flat Spinning Ring Indicator
+      const flatKey = `buoy-flat-${cp.id}`;
+      let flatMarker = markersRef.current[flatKey];
+      if (!flatMarker) {
         const el = document.createElement('div');
-        el.className = 'buoy-marker-3d';
+        el.style.width = '64px';
+        el.style.height = '64px';
+        el.style.display = 'flex';
+        el.style.alignItems = 'center';
+        el.style.justifyContent = 'center';
+        el.innerHTML = `
+          <style>
+            @keyframes ${animName}-kf {
+              from { transform: rotate(0deg); }
+              to { transform: rotate(${isPort ? '-360deg' : '360deg'}); }
+            }
+          </style>
+          <div style="width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; animation: ${animName}-kf ${speed} linear infinite; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));">
+            <svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="${ringColor}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+              ${svgPath}
+            </svg>
+          </div>
+        `;
+
+        flatMarker = new maplibregl.Marker({
+          element: el,
+          rotationAlignment: 'map',
+          pitchAlignment: 'map'
+        })
+          .setLngLat([cp.coord[1], cp.coord[0]])
+          .addTo(map);
+      } else {
+        flatMarker.setLngLat([cp.coord[1], cp.coord[0]]);
+      }
+      newMarkers[flatKey] = flatMarker;
+      delete markersRef.current[flatKey];
+
+      // B. Billboard Buoy ID Badge (facing viewport)
+      const billboardKey = `buoy-billboard-${cp.id}`;
+      let billboardMarker = markersRef.current[billboardKey];
+      if (!billboardMarker) {
+        const el = document.createElement('div');
         el.style.width = '32px';
         el.style.height = '32px';
         el.style.display = 'flex';
         el.style.alignItems = 'center';
         el.style.justifyContent = 'center';
-        
         el.innerHTML = `
           <div style="
             width: 24px; 
@@ -399,23 +425,27 @@ export default function ThreeDMap({
           ">${cp.id.replace(/\D/g, '')}</div>
         `;
 
-        marker = new maplibregl.Marker({ element: el })
+        billboardMarker = new maplibregl.Marker({
+          element: el,
+          rotationAlignment: 'viewport',
+          pitchAlignment: 'viewport'
+        })
           .setLngLat([cp.coord[1], cp.coord[0]])
           .addTo(map);
       } else {
-        marker.setLngLat([cp.coord[1], cp.coord[0]]);
+        billboardMarker.setLngLat([cp.coord[1], cp.coord[0]]);
       }
-
-      newMarkers[key] = marker;
-      delete markersRef.current[key];
+      newMarkers[billboardKey] = billboardMarker;
+      delete markersRef.current[billboardKey];
     });
 
-    // 2. Render Line Endpoints (Start, Gate, Finish Buoys)
+    // 2. Render Line Endpoints and Midpoint Crossing Arrows
     checkpoints.forEach(cp => {
       if (cp.kind === 'buoy' || !cp.coords) return;
       const color = cp.kind === 'start' ? '#22c55e'
         : cp.kind === 'finish' ? '#ef4444' : '#f5cb5c';
 
+      // A. Endpoint buoys
       cp.coords.forEach((coord, idx) => {
         const key = `line-endpoint-${cp.id}-${idx}`;
         let marker = markersRef.current[key];
@@ -442,9 +472,60 @@ export default function ThreeDMap({
         newMarkers[key] = marker;
         delete markersRef.current[key];
       });
+
+      // B. Flat pulsing arrow at midpoint oriented in crossing bearing
+      const midLat = (cp.coords[0][0] + cp.coords[1][0]) / 2;
+      const midLng = (cp.coords[0][1] + cp.coords[1][1]) / 2;
+
+      const ptA = turf.point([cp.coords[0][1], cp.coords[0][0]]);
+      const ptB = turf.point([cp.coords[1][1], cp.coords[1][0]]);
+      const lb = turf.bearing(ptA, ptB);
+      
+      const crossingDir = cp.crossing || 'up';
+      const crossingBearing = crossingDir === 'up' 
+        ? (lb - 90 + 360) % 360 
+        : (lb + 90 + 360) % 360;
+
+      const midKey = `line-midpoint-${cp.id}`;
+      let midMarker = markersRef.current[midKey];
+      if (!midMarker) {
+        const el = document.createElement('div');
+        el.style.width = '48px';
+        el.style.height = '48px';
+        el.style.display = 'flex';
+        el.style.alignItems = 'center';
+        el.style.justifyContent = 'center';
+        el.innerHTML = `
+          <style>
+            @keyframes arrow-pulse-${cp.id} {
+              0% { transform: scale(0.9); opacity: 0.65; }
+              50% { transform: scale(1.2); opacity: 1; }
+              100% { transform: scale(0.9); opacity: 0.65; }
+            }
+          </style>
+          <div style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; animation: arrow-pulse-${cp.id} 2s ease-in-out infinite; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.45));">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="#fff" stroke-width="1.8" width="36" height="36">
+              <path d="M12 4 L4 13 L9 13 L9 20 L15 20 L15 13 L20 13 Z" />
+            </svg>
+          </div>
+        `;
+        midMarker = new maplibregl.Marker({
+          element: el,
+          rotationAlignment: 'map',
+          pitchAlignment: 'map'
+        })
+          .setLngLat([midLng, midLat])
+          .setRotation(crossingBearing)
+          .addTo(map);
+      } else {
+        midMarker.setLngLat([midLng, midLat]);
+        midMarker.setRotation(crossingBearing);
+      }
+      newMarkers[midKey] = midMarker;
+      delete markersRef.current[midKey];
     });
 
-    // 3. Render Main Simulated Boat (stuck to terrain and rotated natively)
+    // 3. Render Main Simulated Boat (flat map-aligned)
     if (boatPos && boatPos.lat && boatPos.lng) {
       const key = 'main-boat';
       let marker = markersRef.current[key];
@@ -523,10 +604,9 @@ export default function ThreeDMap({
       delete markersRef.current[key];
     });
 
-    // Remove remaining old markers
     Object.values(markersRef.current).forEach(m => m.remove());
     markersRef.current = newMarkers;
-  }, [checkpoints, boatPos, fleet]);
+  }, [checkpoints, boatPos, fleet, targetName]);
 
   return (
     <div 
