@@ -250,18 +250,20 @@ const enforceCourseOrder = (checkpoints) => {
              : turf.bearing(ptMid, ptRef);
  
            if (isFinish) {
-             const width = cp.width || 120;
-             const rotation = desiredBearing;
-             const angleA = (rotation + 90) % 360;
-             const angleB = (rotation - 90 + 360) % 360;
-             const halfDistKm = (width / 2) / 1000;
-             const ptA = turf.destination(ptMid, halfDistKm, angleA, { units: 'kilometers' });
-             const ptB = turf.destination(ptMid, halfDistKm, angleB, { units: 'kilometers' });
-             cp.coords = [
-               [ptA.geometry.coordinates[1], ptA.geometry.coordinates[0]],
-               [ptB.geometry.coordinates[1], ptB.geometry.coordinates[0]]
-             ];
-             cp.rotationDeg = rotation;
+              const width = cp.width || 120;
+              const rotation = desiredBearing;
+              if (Math.abs((cp.rotationDeg || 0) - rotation) > 0.01) {
+                const angleA = (rotation + 90) % 360;
+                const angleB = (rotation - 90 + 360) % 360;
+                const halfDistKm = (width / 2) / 1000;
+                const ptA = turf.destination(ptMid, halfDistKm, angleA, { units: 'kilometers' });
+                const ptB = turf.destination(ptMid, halfDistKm, angleB, { units: 'kilometers' });
+                cp.coords = [
+                  [ptA.geometry.coordinates[1], ptA.geometry.coordinates[0]],
+                  [ptB.geometry.coordinates[1], ptB.geometry.coordinates[0]]
+                ];
+                cp.rotationDeg = rotation;
+              }
            }
  
            const ptA = turf.point([cp.coords[0][1], cp.coords[0][0]]);
