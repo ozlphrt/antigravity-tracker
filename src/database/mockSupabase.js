@@ -13,7 +13,7 @@ class MockSupabase {
     // Default initial data
     const defaultCourse = {
       id: 'course-1',
-      name: 'Karaada Offshore',
+      name: 'Karaada Course',
       checkpoints: [
         { id: 'start', type: 'start', coord: [36.980, 27.460], width: 100, rotationDeg: 270, crossing: 'center' },
         { id: 'buoy-1', type: 'buoy', coord: [36.965, 27.440], rounding: 'port' },
@@ -26,11 +26,11 @@ class MockSupabase {
     if (storedCourses) {
       try {
         const parsed = JSON.parse(storedCourses);
-        // Force upgrade course-1 if it was saved with old Bodrum Bay coordinates, is missing checkpoints, or is not near Karaada (36.98)
+        // Force upgrade course-1 if it was saved with old Bodrum Bay coordinates, is missing checkpoints, is not near Karaada, or has the old name
         const c1Index = parsed.findIndex(c => c.id === 'course-1');
         if (c1Index >= 0) {
           const firstCp = parsed[c1Index].checkpoints?.[0];
-          if (!firstCp || !firstCp.coord || Math.abs(firstCp.coord[0] - 36.980) > 0.01 || parsed[c1Index].checkpoints.length === 0) {
+          if (!firstCp || !firstCp.coord || Math.abs(firstCp.coord[0] - 36.980) > 0.01 || parsed[c1Index].checkpoints.length === 0 || parsed[c1Index].name !== 'Karaada Course') {
             parsed[c1Index] = defaultCourse;
             localStorage.setItem('rc_courses', JSON.stringify(parsed));
           }

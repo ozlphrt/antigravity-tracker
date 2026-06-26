@@ -607,6 +607,8 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
       if (courses && courses.length > 0) {
         const activeId = localStorage.getItem('rc_active_course_id');
         const activeCourse = courses.find(c => c.id === activeId)
+          || courses.find(c => c.name === 'Karaada Course')
+          || courses.find(c => c.name && c.name.toLowerCase().includes('karaada'))
           || courses.find(c => c.id === 'course-1')
           || courses[0];
         setCourse(normalizeCourse(activeCourse));
