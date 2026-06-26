@@ -816,7 +816,7 @@ in vec3 view_direction;uniform vec3 u_sun_pos;uniform vec3 u_globe_position;unif
               100% { transform: scale(1.25); opacity: 0.85; }
             }
           </style>
-          <div style="position: relative; width: 40px; height: 40px; transform-style: preserve-3d; pointer-events: none;">
+          <div style="position: relative; width: 40px; height: 40px; pointer-events: none;">
             <!-- Glow pulse underneath (Focus Highlight) -->
             <div style="
               position: absolute;
@@ -842,29 +842,17 @@ in vec3 view_direction;uniform vec3 u_sun_pos;uniform vec3 u_globe_position;unif
               border: 1.8px solid #ffffff;
               box-shadow: inset 0 2px 4px rgba(255,255,255,0.2);
             "></div>
-            <!-- Mast standing vertical -->
+            <!-- Flat deck/sail line representation -->
             <div style="
               position: absolute;
-              left: 20px;
-              top: 20px;
-              width: 0px;
-              height: 0px;
-              transform: rotateX(-90deg) rotateY(15deg);
-              transform-style: preserve-3d;
-              transform-origin: bottom center;
-            ">
-              <div style="position: absolute; left: -1px; bottom: 0; width: 2px; height: 26px; background: #4b5563;"></div>
-              <div style="
-                position: absolute; 
-                left: 1px; 
-                bottom: 4px; 
-                width: 0; 
-                height: 0; 
-                border-left: 11px solid #f8fafc; 
-                border-bottom: 7px solid transparent; 
-                border-top: 10px solid transparent;
-              "></div>
-            </div>
+              left: 19px;
+              top: 8px;
+              width: 2px;
+              height: 20px;
+              background: #ffffff;
+              border-radius: 1px;
+              opacity: 0.9;
+            "></div>
           </div>
           <!-- Name Label on Hover/Tap -->
           <div class="boat-label" style="
@@ -898,7 +886,7 @@ in vec3 view_direction;uniform vec3 u_sun_pos;uniform vec3 u_globe_position;unif
               transform: translateX(-50%) translateY(-5px) !important;
             }
           </style>
-          <div style="position: relative; width: 40px; height: 40px; transform-style: preserve-3d; pointer-events: none;">
+          <div style="position: relative; width: 40px; height: 40px; pointer-events: none;">
             <!-- Hull flat on water -->
             <div style="
               position: absolute; 
@@ -910,29 +898,17 @@ in vec3 view_direction;uniform vec3 u_sun_pos;uniform vec3 u_globe_position;unif
               clip-path: polygon(50% 0%, 100% 75%, 50% 100%, 0% 75%); 
               border: 1.8px solid #ffffff;
             "></div>
-            <!-- Mast standing vertical -->
+            <!-- Flat deck/sail line representation -->
             <div style="
               position: absolute;
-              left: 20px;
-              top: 20px;
-              width: 0px;
-              height: 0px;
-              transform: rotateX(-90deg) rotateY(12deg);
-              transform-style: preserve-3d;
-              transform-origin: bottom center;
-            ">
-              <div style="position: absolute; left: -1px; bottom: 0; width: 2px; height: 26px; background: #4b5563;"></div>
-              <div style="
-                position: absolute; 
-                left: 1px; 
-                bottom: 4px; 
-                width: 0; 
-                height: 0; 
-                border-left: 11px solid #f8fafc; 
-                border-bottom: 7px solid transparent; 
-                border-top: 10px solid transparent;
-              "></div>
-            </div>
+              left: 19px;
+              top: 8px;
+              width: 2px;
+              height: 20px;
+              background: #ffffff;
+              border-radius: 1px;
+              opacity: 0.9;
+            "></div>
           </div>
           <!-- Name Label on Hover/Tap -->
           <div class="boat-label" style="
