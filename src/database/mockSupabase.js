@@ -39,6 +39,10 @@ class MockSupabase {
             parsed[c1Index] = defaultCourse;
             localStorage.setItem('rc_courses', JSON.stringify(parsed));
           }
+        } else {
+          // Default course-1 is missing completely! Re-create it at the beginning
+          parsed.unshift(defaultCourse);
+          localStorage.setItem('rc_courses', JSON.stringify(parsed));
         }
         this.db.courses = parsed;
       } catch (e) {
