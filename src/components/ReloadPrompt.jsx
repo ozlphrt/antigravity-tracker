@@ -5,6 +5,7 @@ import { RefreshCw, X } from 'lucide-react'
 export default function ReloadPrompt() {
   const [registration, setRegistration] = React.useState(null);
   const [mockRefresh, setMockRefresh] = React.useState(false);
+  const [isDismissed, setIsDismissed] = React.useState(false);
 
   const {
     needRefresh: [needRefresh, setNeedRefresh],
@@ -34,6 +35,8 @@ export default function ReloadPrompt() {
 
     // Check for updates when window gets focus (user resumes/launches app)
     const checkUpdate = () => {
+      // Do not check/trigger if the user has already dismissed the prompt for this session
+      if (isDismissed) return;
       registration.update().catch(err => console.error('SW focus update error', err));
     };
 
@@ -42,6 +45,7 @@ export default function ReloadPrompt() {
 
     // Periodic check every 30 seconds
     const intervalId = setInterval(() => {
+      if (isDismissed) return;
       registration.update().catch(err => console.error('SW periodic update error', err));
     }, 30000);
 
@@ -50,13 +54,15 @@ export default function ReloadPrompt() {
       document.removeEventListener('visibilitychange', checkUpdate);
       clearInterval(intervalId);
     };
-  }, [registration]);
+  }, [registration, isDismissed]);
 
   const close = () => {
     setNeedRefresh(false)
     setMockRefresh(false)
+    setIsDismissed(true)
   }
 
+  if (isDismissed) return null
   if (!needRefresh && !mockRefresh) return null
 
   return (
@@ -93,11 +99,16 @@ export default function ReloadPrompt() {
       </p>
       
       <button 
-        onClick={() => {
+        onClick={async () => {
           if (mockRefresh) {
             window.location.reload();
           } else {
-            updateServiceWorker(true);
+            // Trigger skipWaiting
+            await updateServiceWorker(true);
+            // Fallback reload in case the SW controller change event doesn't fire
+            setTimeout(() => {
+              window.location.reload();
+            }, 1000);
           }
         }}
         style={{
