@@ -35,7 +35,7 @@ export default function ThreeDMap({
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
-  const markersRef = useRef({}); // Store active HTML markers (buoys, flat rings, endpoints, midpoints, boats)
+  const markersRef = useRef({}); // Store active HTML markers (buoys, endpoints, midpoints, boats)
 
   // Initialize Map
   useEffect(() => {
@@ -74,15 +74,16 @@ export default function ThreeDMap({
         data: { type: 'FeatureCollection', features: [] }
       });
 
+      // Subtle dotted course line style (using round caps with short dash and gap)
       map.addLayer({
         id: 'course-connection-layer',
         type: 'line',
         source: 'course-lines',
         paint: {
           'line-color': '#06b6d4',
-          'line-width': 4,
-          'line-dasharray': [3, 2],
-          'line-opacity': 0.85
+          'line-width': 3,
+          'line-dasharray': [0.15, 3],
+          'line-opacity': 0.55
         },
         layout: {
           'line-cap': 'round',
@@ -95,14 +96,15 @@ export default function ThreeDMap({
         data: { type: 'FeatureCollection', features: [] }
       });
 
+      // Thicker gate/lines to match the 2D version visual hierarchy
       map.addLayer({
         id: 'checkpoint-gates-layer',
         type: 'line',
         source: 'checkpoint-gates',
         paint: {
           'line-color': ['get', 'color'],
-          'line-width': 8,
-          'line-opacity': 0.9
+          'line-width': 12,
+          'line-opacity': 0.85
         },
         layout: {
           'line-cap': 'round',
@@ -122,7 +124,7 @@ export default function ThreeDMap({
         paint: {
           'line-color': ['get', 'color'],
           'line-width': 3,
-          'line-opacity': 0.75
+          'line-opacity': 0.7
         },
         layout: {
           'line-cap': 'round',
@@ -147,7 +149,7 @@ export default function ThreeDMap({
           'line-color': '#33658a',
           'line-width': 2.5,
           'line-dasharray': [2, 2],
-          'line-opacity': 0.8
+          'line-opacity': 0.75
         },
         layout: {
           'line-cap': 'round',
@@ -161,9 +163,9 @@ export default function ThreeDMap({
         source: 'telemetry-bearing',
         paint: {
           'line-color': '#f26419',
-          'line-width': 3,
+          'line-width': 2.5,
           'line-dasharray': [0, 3],
-          'line-opacity': 0.7
+          'line-opacity': 0.65
         },
         layout: {
           'line-cap': 'round',
@@ -184,17 +186,25 @@ export default function ThreeDMap({
     };
   }, []);
 
-  // Update Dynamic Sources and Layers
+  // Effect 1: Camera follow boat (Only runs when user boat coordinates change)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !boatPos || !boatPos.lat || !boatPos.lng) return;
+
+    map.easeTo({
+      center: [boatPos.lng, boatPos.lat],
+      duration: 1200,
+      essential: true
+    });
+  }, [boatPos?.lat, boatPos?.lng]);
+
+  // Effect 2: Update Static Course GeoJSON sources (Depends only on checkpoints layout)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    const updateMapData = () => {
-      if (!map.getSource('course-lines') || 
-          !map.getSource('checkpoint-gates') || 
-          !map.getSource('boat-trails') ||
-          !map.getSource('telemetry-heading') ||
-          !map.getSource('telemetry-bearing')) return;
+    const updateStaticLayers = () => {
+      if (!map.getSource('course-lines') || !map.getSource('checkpoint-gates')) return;
 
       const connectionCoordinates = checkpoints
         .map(cp => {
@@ -243,6 +253,24 @@ export default function ThreeDMap({
         type: 'FeatureCollection',
         features: gateFeatures
       });
+    };
+
+    if (map.loaded()) {
+      updateStaticLayers();
+    } else {
+      map.on('load', updateStaticLayers);
+    }
+  }, [checkpoints]);
+
+  // Effect 3: Update Telemetry & Trail GeoJSON sources (Depends on active navigation/history)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const updateTelemetryLayers = () => {
+      if (!map.getSource('boat-trails') ||
+          !map.getSource('telemetry-heading') ||
+          !map.getSource('telemetry-bearing')) return;
 
       const trailFeatures = [];
 
@@ -324,20 +352,20 @@ export default function ThreeDMap({
     };
 
     if (map.loaded()) {
-      updateMapData();
+      updateTelemetryLayers();
     } else {
-      map.on('load', updateMapData);
+      map.on('load', updateTelemetryLayers);
     }
-  }, [checkpoints, trace, aiTrails, boatPos, fleet, targetPos, targetName]);
+  }, [trace, aiTrails, boatPos, fleet, targetPos, targetName]);
 
-  // Update HTML Markers
+  // Effect 4: Update Checkpoint HTML Markers (Runs ONLY when checkpoints layout or targetName changes)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
     const newMarkers = {};
 
-    // 1. Render Buoys (Flat Spinning Turn Ring + Billboard ID Badge)
+    // 1. Render Buoys
     checkpoints.forEach(cp => {
       if (cp.kind !== 'buoy' || !cp.coord) return;
       
@@ -350,7 +378,6 @@ export default function ThreeDMap({
         ? `<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>` 
         : `<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>`;
 
-      // A. Flat Perspective Buoy Marker (combined spinning ring and ID badge)
       const flatKey = `buoy-flat-${cp.id}`;
       let flatMarker = markersRef.current[flatKey];
       if (!flatMarker) {
@@ -432,7 +459,7 @@ export default function ThreeDMap({
         delete markersRef.current[key];
       });
 
-      // B. Flat pulsing arrow at midpoint oriented in crossing bearing
+      // B. Flat MULTI-ARROW sliding crossing indicators at midpoint oriented in crossing bearing
       const midLat = (cp.coords[0][0] + cp.coords[1][0]) / 2;
       const midLng = (cp.coords[0][1] + cp.coords[1][1]) / 2;
 
@@ -449,23 +476,31 @@ export default function ThreeDMap({
       let midMarker = markersRef.current[midKey];
       if (!midMarker) {
         const el = document.createElement('div');
-        el.style.width = '48px';
+        el.style.width = '120px';
         el.style.height = '48px';
         el.style.display = 'flex';
         el.style.alignItems = 'center';
         el.style.justifyContent = 'center';
         el.innerHTML = `
           <style>
-            @keyframes arrow-pulse-${cp.id} {
-              0% { transform: scale(0.9); opacity: 0.65; }
-              50% { transform: scale(1.2); opacity: 1; }
-              100% { transform: scale(0.9); opacity: 0.65; }
+            @keyframes arrow-slide-${cp.id} {
+              0% { transform: translateY(14px); opacity: 0; }
+              15% { opacity: 0.85; }
+              85% { opacity: 0.85; }
+              100% { transform: translateY(-14px); opacity: 0; }
             }
           </style>
-          <div style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; animation: arrow-pulse-${cp.id} 2s ease-in-out infinite; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.45));">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="#fff" stroke-width="1.8" width="36" height="36">
-              <path d="M12 4 L4 13 L9 13 L9 20 L15 20 L15 13 L20 13 Z" />
-            </svg>
+          <div style="position: relative; width: 100%; height: 100%; display: flex; justify-content: space-around; align-items: center; pointer-events: none;">
+            ${[0, 1, 2].map(i => {
+              const delay = (i * 0.28).toFixed(2);
+              return `
+                <div style="animation: arrow-slide-${cp.id} 1.4s linear infinite; animation-delay: ${delay}s; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.45)); display: flex; align-items: center; justify-content: center;">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" width="28" height="28">
+                    <polyline points="18 15 12 9 6 15" />
+                  </svg>
+                </div>
+              `;
+            }).join('')}
           </div>
         `;
         midMarker = new maplibregl.Marker({
@@ -484,7 +519,26 @@ export default function ThreeDMap({
       delete markersRef.current[midKey];
     });
 
-    // 3. Render Main Simulated Boat (flat map-aligned)
+    // Clean up old checkpoint markers and preserve boats
+    Object.keys(markersRef.current).forEach(key => {
+      if (key.startsWith('buoy-') || key.startsWith('line-')) {
+        markersRef.current[key].remove();
+        delete markersRef.current[key];
+      }
+    });
+
+    // Merge new checkpoint markers into store
+    Object.assign(markersRef.current, newMarkers);
+  }, [checkpoints, targetName]);
+
+  // Effect 5: Update Boat HTML Markers (Only runs when telemetry or fleet simulation coordinates change)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const newBoatMarkers = {};
+
+    // 1. Render Main Simulated/GPS Boat as CSS 3D Sailboat
     if (boatPos && boatPos.lat && boatPos.lng) {
       const key = 'main-boat';
       let marker = markersRef.current[key];
@@ -492,16 +546,48 @@ export default function ThreeDMap({
 
       if (!marker) {
         const el = document.createElement('div');
-        el.style.width = '30px';
-        el.style.height = '30px';
+        el.style.width = '40px';
+        el.style.height = '40px';
         el.style.display = 'flex';
         el.style.alignItems = 'center';
         el.style.justifyContent = 'center';
         el.innerHTML = `
-          <div style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.45));">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#33658A" stroke="#fff" stroke-width="2.2" stroke-linejoin="round" width="30" height="30">
-              <path d="M12 2 L19 21 Q12 18 5 21 Z" />
-            </svg>
+          <div style="position: relative; width: 40px; height: 40px; transform-style: preserve-3d; pointer-events: none;">
+            <!-- Hull flat on water -->
+            <div style="
+              position: absolute; 
+              left: 12px; 
+              top: 4px; 
+              width: 16px; 
+              height: 32px; 
+              background: #33658A; 
+              clip-path: polygon(50% 0%, 100% 75%, 50% 100%, 0% 75%); 
+              border: 1.8px solid #ffffff;
+              box-shadow: inset 0 2px 4px rgba(255,255,255,0.2);
+            "></div>
+            <!-- Mast standing vertical -->
+            <div style="
+              position: absolute;
+              left: 20px;
+              top: 20px;
+              width: 0px;
+              height: 0px;
+              transform: rotateX(-90deg) rotateY(15deg);
+              transform-style: preserve-3d;
+              transform-origin: bottom center;
+            ">
+              <div style="position: absolute; left: -1px; bottom: 0; width: 2px; height: 26px; background: #4b5563;"></div>
+              <div style="
+                position: absolute; 
+                left: 1px; 
+                bottom: 4px; 
+                width: 0; 
+                height: 0; 
+                border-left: 11px solid #f8fafc; 
+                border-bottom: 7px solid transparent; 
+                border-top: 10px solid transparent;
+              "></div>
+            </div>
           </div>
         `;
 
@@ -518,11 +604,11 @@ export default function ThreeDMap({
         marker.setRotation(heading);
       }
 
-      newMarkers[key] = marker;
+      newBoatMarkers[key] = marker;
       delete markersRef.current[key];
     }
 
-    // 4. Render Fleet simulated boats
+    // 2. Render Fleet simulated boats as CSS 3D Sailboats
     fleet.forEach(boat => {
       const lat = boat.lat || boat.pos?.lat;
       const lng = boat.lng || boat.pos?.lng;
@@ -533,16 +619,47 @@ export default function ThreeDMap({
 
       if (!marker) {
         const el = document.createElement('div');
-        el.style.width = '24px';
-        el.style.height = '24px';
+        el.style.width = '40px';
+        el.style.height = '40px';
         el.style.display = 'flex';
         el.style.alignItems = 'center';
         el.style.justifyContent = 'center';
         el.innerHTML = `
-          <div style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0px 3px 5px rgba(0,0,0,0.35));">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${boat.color || '#f43f5e'}" stroke="#fff" stroke-width="1.8" stroke-linejoin="round" width="24" height="24">
-              <path d="M12 2 L19 21 Q12 18 5 21 Z" />
-            </svg>
+          <div style="position: relative; width: 40px; height: 40px; transform-style: preserve-3d; pointer-events: none;">
+            <!-- Hull flat on water -->
+            <div style="
+              position: absolute; 
+              left: 12px; 
+              top: 4px; 
+              width: 16px; 
+              height: 32px; 
+              background: ${boat.color || '#f43f5e'}; 
+              clip-path: polygon(50% 0%, 100% 75%, 50% 100%, 0% 75%); 
+              border: 1.8px solid #ffffff;
+            "></div>
+            <!-- Mast standing vertical -->
+            <div style="
+              position: absolute;
+              left: 20px;
+              top: 20px;
+              width: 0px;
+              height: 0px;
+              transform: rotateX(-90deg) rotateY(12deg);
+              transform-style: preserve-3d;
+              transform-origin: bottom center;
+            ">
+              <div style="position: absolute; left: -1px; bottom: 0; width: 2px; height: 26px; background: #4b5563;"></div>
+              <div style="
+                position: absolute; 
+                left: 1px; 
+                bottom: 4px; 
+                width: 0; 
+                height: 0; 
+                border-left: 11px solid #f8fafc; 
+                border-bottom: 7px solid transparent; 
+                border-top: 10px solid transparent;
+              "></div>
+            </div>
           </div>
         `;
 
@@ -559,13 +676,21 @@ export default function ThreeDMap({
         marker.setRotation(heading);
       }
 
-      newMarkers[key] = marker;
+      newBoatMarkers[key] = marker;
       delete markersRef.current[key];
     });
 
-    Object.values(markersRef.current).forEach(m => m.remove());
-    markersRef.current = newMarkers;
-  }, [checkpoints, boatPos, fleet, targetName]);
+    // Remove remaining old boat markers
+    Object.keys(markersRef.current).forEach(key => {
+      if (key.startsWith('main-boat') || key.startsWith('fleet-boat-')) {
+        markersRef.current[key].remove();
+        delete markersRef.current[key];
+      }
+    });
+
+    // Merge new boat markers into store
+    Object.assign(markersRef.current, newBoatMarkers);
+  }, [boatPos, fleet]);
 
   return (
     <div 
