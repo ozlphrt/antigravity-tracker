@@ -125,7 +125,7 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
             }
           }
           const isPort = (target.rounding || 'port').toLowerCase() === 'port';
-          const offsetPt = turf.destination(tPt, 0.055, approachBearing + (isPort ? 90 : -90), { units: 'kilometers' });
+          const offsetPt = turf.destination(tPt, 0.055, approachBearing + (isPort ? -90 : 90), { units: 'kilometers' });
           desiredBearing = turf.bearing(boatPt, offsetPt);
         } else {
           const arrowBearing = (getLineBearing(target) + 360) % 360;

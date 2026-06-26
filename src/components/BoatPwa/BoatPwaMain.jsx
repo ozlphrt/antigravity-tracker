@@ -463,6 +463,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
     minDistanceRef.current = Infinity;
     closestSideRef.current = null;
     lastCapturedPos.current = null;
+    lastPosRef.current = null;
     setIsAutoSteer(!isLiveMode);
     autoSteerPhase.current = 'approach';
     upwindWaypointRef.current = null;
@@ -555,7 +556,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
              }
 
              const isPort = (target.rounding || 'port').toLowerCase() === 'port';
-             const offsetBearing = approachBearing + (isPort ? 90 : -90);
+             const offsetBearing = approachBearing + (isPort ? -90 : 90);
              // 25m offset to ensure we clear the buoy nicely
              const offsetTarget = turf.destination(tPt, 0.025, offsetBearing, { units: 'kilometers' });
              
@@ -828,6 +829,9 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           setActiveTargetIndex(prev => prev + 1);
           minDistanceRef.current = Infinity; // Reset for next target
           closestSideRef.current = null;
+          if (activeTargetIndex === 0) {
+            autoSteerPhase.current = 'race';
+          }
         }
       } else {
         // For buoys, we use CPA and rounding direction
