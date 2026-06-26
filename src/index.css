@@ -1070,6 +1070,7 @@ body.dragging-active .leaflet-interactive,
 body.dragging-active .leaflet-marker-icon {
   cursor: grabbing !important;
   user-select: none;
+  touch-action: none !important;
 }
 
 .course-buoy-dot {

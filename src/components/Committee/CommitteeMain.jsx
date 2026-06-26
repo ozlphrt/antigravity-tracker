@@ -758,6 +758,11 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     const map = mapRef.current;
     if (!map) return;
 
+    // Prevent mobile page scroll/pan on touchstart
+    if (startEvent.originalEvent?.cancelable) {
+      startEvent.originalEvent.preventDefault();
+    }
+
     map.dragging.disable();
     if (map.doubleClickZoom) map.doubleClickZoom.disable();
     document.body.classList.add('dragging-active');
@@ -766,6 +771,9 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     const startLatLng = getEventLatLng(startEvent, map);
 
     const onMouseMove = (e) => {
+      if (e.originalEvent?.cancelable) {
+        e.originalEvent.preventDefault();
+      }
       const latlng = getEventLatLng(e, map);
       if (!latlng || !startLatLng) return;
       const dLat = latlng.lat - startLatLng.lat;
@@ -791,6 +799,10 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     const map = mapRef.current;
     if (!map) return;
 
+    if (startEvent.originalEvent?.cancelable) {
+      startEvent.originalEvent.preventDefault();
+    }
+
     map.dragging.disable();
     if (map.doubleClickZoom) map.doubleClickZoom.disable();
     document.body.classList.add('dragging-active');
@@ -799,6 +811,9 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     const startLatLng = getEventLatLng(startEvent, map);
 
     const onMouseMove = (e) => {
+      if (e.originalEvent?.cancelable) {
+        e.originalEvent.preventDefault();
+      }
       const latlng = getEventLatLng(e, map);
       if (!latlng || !startLatLng) return;
       const dLat = latlng.lat - startLatLng.lat;
@@ -825,6 +840,10 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     const map = mapRef.current;
     if (!map) return;
 
+    if (startEvent.originalEvent?.cancelable) {
+      startEvent.originalEvent.preventDefault();
+    }
+
     map.dragging.disable();
     if (map.doubleClickZoom) map.doubleClickZoom.disable();
     document.body.classList.add('dragging-active');
@@ -833,6 +852,9 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     const startLatLng = getEventLatLng(startEvent, map);
 
     const onMouseMove = (e) => {
+      if (e.originalEvent?.cancelable) {
+        e.originalEvent.preventDefault();
+      }
       const latlng = getEventLatLng(e, map);
       if (!latlng || !startLatLng) return;
       const dLat = latlng.lat - startLatLng.lat;
