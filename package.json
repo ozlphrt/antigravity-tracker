@@ -1,7 +1,7 @@
 {
   "name": "tracker",
   "private": true,
-  "version": "1.0.38",
+  "version": "1.0.39",
   "type": "module",
   "homepage": "https://ozlphrt.github.io/antigravity-tracker",
   "scripts": {

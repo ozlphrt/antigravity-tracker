@@ -350,7 +350,7 @@ export default function ThreeDMap({
         ? `<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>` 
         : `<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>`;
 
-      // A. Flat Spinning Ring Indicator
+      // A. Flat Perspective Buoy Marker (combined spinning ring and ID badge)
       const flatKey = `buoy-flat-${cp.id}`;
       let flatMarker = markersRef.current[flatKey];
       if (!flatMarker) {
@@ -367,10 +367,13 @@ export default function ThreeDMap({
               to { transform: rotate(${isPort ? '-360deg' : '360deg'}); }
             }
           </style>
-          <div style="width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; animation: ${animName}-kf ${speed} linear infinite; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));">
-            <svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="${ringColor}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
-              ${svgPath}
-            </svg>
+          <div style="position: relative; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 3px 5px rgba(0,0,0,0.45));">
+            <div style="width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; animation: ${animName}-kf ${speed} linear infinite;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="${ringColor}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                ${svgPath}
+              </svg>
+            </div>
+            <div style="position: absolute; background: white; color: var(--text-primary); border: 2.5px solid ${ringColor}; border-radius: 50%; font-weight: 950; font-size: 13px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1.5px 3px rgba(0,0,0,0.3);">${cp.id.replace(/\D/g, '')}</div>
           </div>
         `;
 
@@ -386,46 +389,6 @@ export default function ThreeDMap({
       }
       newMarkers[flatKey] = flatMarker;
       delete markersRef.current[flatKey];
-
-      // B. Billboard Buoy ID Badge (facing viewport)
-      const billboardKey = `buoy-billboard-${cp.id}`;
-      let billboardMarker = markersRef.current[billboardKey];
-      if (!billboardMarker) {
-        const el = document.createElement('div');
-        el.style.width = '32px';
-        el.style.height = '32px';
-        el.style.display = 'flex';
-        el.style.alignItems = 'center';
-        el.style.justifyContent = 'center';
-        el.innerHTML = `
-          <div style="
-            width: 24px; 
-            height: 24px; 
-            border-radius: 50%; 
-            background: radial-gradient(circle at 8px 8px, #ff7b54, #d32f2f); 
-            box-shadow: 0 4px 8px rgba(0,0,0,0.5), inset 0 -4px 6px rgba(0,0,0,0.3);
-            border: 2px solid white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 10px;
-            font-weight: 900;
-          ">${cp.id.replace(/\D/g, '')}</div>
-        `;
-
-        billboardMarker = new maplibregl.Marker({
-          element: el,
-          rotationAlignment: 'viewport',
-          pitchAlignment: 'viewport'
-        })
-          .setLngLat([cp.coord[1], cp.coord[0]])
-          .addTo(map);
-      } else {
-        billboardMarker.setLngLat([cp.coord[1], cp.coord[0]]);
-      }
-      newMarkers[billboardKey] = billboardMarker;
-      delete markersRef.current[billboardKey];
     });
 
     // 2. Render Line Endpoints and Midpoint Crossing Arrows
@@ -434,25 +397,32 @@ export default function ThreeDMap({
       const color = cp.kind === 'start' ? '#22c55e'
         : cp.kind === 'finish' ? '#ef4444' : '#f5cb5c';
 
-      // A. Endpoint buoys
+      // A. Endpoint buoys (flat perspective)
       cp.coords.forEach((coord, idx) => {
         const key = `line-endpoint-${cp.id}-${idx}`;
         let marker = markersRef.current[key];
         if (!marker) {
           const el = document.createElement('div');
-          el.style.width = '20px';
-          el.style.height = '20px';
+          el.style.width = '24px';
+          el.style.height = '24px';
+          el.style.display = 'flex';
+          el.style.alignItems = 'center';
+          el.style.justifyContent = 'center';
           el.innerHTML = `
             <div style="
-              width: 16px; 
-              height: 16px; 
+              width: 18px; 
+              height: 18px; 
               border-radius: 50%; 
               background: radial-gradient(circle at 6px 6px, ${color}, #1e293b); 
               box-shadow: 0 3px 6px rgba(0,0,0,0.5);
-              border: 1.5px solid white;
+              border: 2px solid white;
             "></div>
           `;
-          marker = new maplibregl.Marker({ element: el })
+          marker = new maplibregl.Marker({
+            element: el,
+            rotationAlignment: 'map',
+            pitchAlignment: 'map'
+          })
             .setLngLat([coord[1], coord[0]])
             .addTo(map);
         } else {
