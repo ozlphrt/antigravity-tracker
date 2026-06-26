@@ -13,12 +13,12 @@ class MockSupabase {
     // Default initial data
     const defaultCourse = {
       id: 'course-1',
-      name: 'Bodrum Bay Offshore',
+      name: 'Karaada Offshore',
       checkpoints: [
-        { id: 'start', type: 'start', coord: [37.0255, 27.4325], width: 100, rotationDeg: 270, crossing: 'center' },
-        { id: 'buoy-1', type: 'buoy', coord: [37.010, 27.400], rounding: 'port' },
-        { id: 'buoy-2', type: 'buoy', coord: [36.995, 27.450], rounding: 'starboard' },
-        { id: 'finish', type: 'finish', coord: [37.0255, 27.4325], width: 100, rotationDeg: 270, crossing: 'center' }
+        { id: 'start', type: 'start', coord: [36.980, 27.460], width: 100, rotationDeg: 270, crossing: 'center' },
+        { id: 'buoy-1', type: 'buoy', coord: [36.965, 27.440], rounding: 'port' },
+        { id: 'buoy-2', type: 'buoy', coord: [36.965, 27.480], rounding: 'starboard' },
+        { id: 'finish', type: 'finish', coord: [36.980, 27.460], width: 100, rotationDeg: 270, crossing: 'center' }
       ]
     };
 
@@ -26,11 +26,14 @@ class MockSupabase {
     if (storedCourses) {
       try {
         const parsed = JSON.parse(storedCourses);
-        // Force upgrade course-1 if it was saved with empty checkpoints
+        // Force upgrade course-1 if it was saved with old Bodrum Bay coordinates or empty checkpoints
         const c1Index = parsed.findIndex(c => c.id === 'course-1');
-        if (c1Index >= 0 && parsed[c1Index].checkpoints.length === 0) {
-          parsed[c1Index] = defaultCourse;
-          localStorage.setItem('rc_courses', JSON.stringify(parsed));
+        if (c1Index >= 0) {
+          const firstCp = parsed[c1Index].checkpoints?.[0];
+          if (!firstCp || (firstCp.coord && Math.abs(firstCp.coord[0] - 37.0255) < 0.01) || parsed[c1Index].checkpoints.length === 0) {
+            parsed[c1Index] = defaultCourse;
+            localStorage.setItem('rc_courses', JSON.stringify(parsed));
+          }
         }
         this.db.courses = parsed;
       } catch (e) {

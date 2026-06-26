@@ -7,10 +7,10 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['app-icon.png'],
       workbox: {
-        skipWaiting: true,
+        skipWaiting: false,
         clientsClaim: true,
       },
       manifest: {

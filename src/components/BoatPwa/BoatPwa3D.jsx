@@ -1,8 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
-const REF_LAT = 37.0255;
-const REF_LNG = 27.4325;
+const REF_LAT = 36.9758;
+const REF_LNG = 27.4601;
 
 function getCenterCoords(course) {
   if (!course || !course.checkpoints || course.checkpoints.length === 0) {

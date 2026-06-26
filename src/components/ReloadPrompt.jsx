@@ -3,23 +3,61 @@ import { useRegisterSW } from 'virtual:pwa-register/react'
 import { RefreshCw, X } from 'lucide-react'
 
 export default function ReloadPrompt() {
+  const [registration, setRegistration] = React.useState(null);
+  const [mockRefresh, setMockRefresh] = React.useState(false);
+
   const {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW({
     onRegistered(r) {
       console.log('SW Registered: ' + r)
+      if (r) {
+        setRegistration(r);
+        r.update(); // Initial check on launch
+      }
     },
     onRegisterError(error) {
       console.log('SW registration error', error)
     },
   })
 
+  React.useEffect(() => {
+    // Force show the update prompt if ?mockUpdate=true is in search or hash parameters
+    if (window.location.search.includes('mockUpdate=true') || window.location.hash.includes('mockUpdate=true')) {
+      setMockRefresh(true);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!registration) return;
+
+    // Check for updates when window gets focus (user resumes/launches app)
+    const checkUpdate = () => {
+      registration.update().catch(err => console.error('SW focus update error', err));
+    };
+
+    window.addEventListener('focus', checkUpdate);
+    document.addEventListener('visibilitychange', checkUpdate);
+
+    // Periodic check every 30 seconds
+    const intervalId = setInterval(() => {
+      registration.update().catch(err => console.error('SW periodic update error', err));
+    }, 30000);
+
+    return () => {
+      window.removeEventListener('focus', checkUpdate);
+      document.removeEventListener('visibilitychange', checkUpdate);
+      clearInterval(intervalId);
+    };
+  }, [registration]);
+
   const close = () => {
     setNeedRefresh(false)
+    setMockRefresh(false)
   }
 
-  if (!needRefresh) return null
+  if (!needRefresh && !mockRefresh) return null
 
   return (
     <div style={{
@@ -51,11 +89,17 @@ export default function ReloadPrompt() {
       </div>
       
       <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-        A new version of BAYK Tracker is available. Reload to update.
+        A new version of BAYK Tracker is available. {mockRefresh ? 'Reloading will refresh this test page.' : 'Reload to update.'}
       </p>
       
       <button 
-        onClick={() => updateServiceWorker(true)}
+        onClick={() => {
+          if (mockRefresh) {
+            window.location.reload();
+          } else {
+            updateServiceWorker(true);
+          }
+        }}
         style={{
           backgroundColor: 'var(--accent-blue)',
           color: 'white',

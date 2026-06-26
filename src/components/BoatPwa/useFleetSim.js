@@ -2,10 +2,26 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import * as turf from '@turf/turf';
 import { AI_FLEET } from './fleetConfig';
 
-const isRaceTarget = (cp) =>
-  cp.kind === 'start' || cp.kind === 'finish' || cp.kind === 'gate' || cp.kind === 'buoy';
+const isRaceTarget = (cp) => {
+  const k = cp.kind || cp.type;
+  return k === 'start' || k === 'finish' || k === 'gate' || k === 'buoy';
+};
 
 const getCheckpointKind = (cp) => cp.kind || cp.type;
+
+function getCheckpointCenter(cp) {
+  if (!cp) return null;
+  if (cp.coord) return { lat: cp.coord[0], lng: cp.coord[1] };
+  if (cp.coords && cp.coords.length > 0) {
+    const lats = cp.coords.map(c => c[0]);
+    const lngs = cp.coords.map(c => c[1]);
+    return {
+      lat: lats.reduce((a, b) => a + b, 0) / lats.length,
+      lng: lngs.reduce((a, b) => a + b, 0) / lngs.length
+    };
+  }
+  return null;
+}
 
 /** Compute arrowBearing for a line checkpoint */
 function getLineBearing(cp) {
@@ -103,13 +119,13 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
           const prevTarget = targets[tIdx - 1];
           let approachBearing = 0;
           if (prevTarget) {
-            let pLat, pLng;
-            if (prevTarget.kind === 'buoy' && prevTarget.coord) { pLat = prevTarget.coord[0]; pLng = prevTarget.coord[1]; }
-            else if (prevTarget.coords) { pLat = (prevTarget.coords[0][0] + prevTarget.coords[1][0])/2; pLng = (prevTarget.coords[0][1] + prevTarget.coords[1][1])/2; }
-            if (pLat !== undefined) approachBearing = turf.bearing(turf.point([pLng, pLat]), tPt);
+            const prevCenter = getCheckpointCenter(prevTarget);
+            if (prevCenter) {
+              approachBearing = turf.bearing(turf.point([prevCenter.lng, prevCenter.lat]), tPt);
+            }
           }
           const isPort = (target.rounding || 'port').toLowerCase() === 'port';
-          const offsetPt = turf.destination(tPt, 0.04, approachBearing + (isPort ? 90 : -90), { units: 'kilometers' });
+          const offsetPt = turf.destination(tPt, 0.055, approachBearing + (isPort ? 90 : -90), { units: 'kilometers' });
           desiredBearing = turf.bearing(boatPt, offsetPt);
         } else {
           const arrowBearing = (getLineBearing(target) + 360) % 360;
@@ -183,7 +199,8 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
         while (diff > 180) diff -= 360;
         if (Math.abs(diff) <= 0.5) hdg = targetHdg;
         else {
-          let turnSpeed = Math.min(Math.max(Math.abs(diff) * 0.1, 0.2), 2.0);
+          const maxTurnSpeed = 1.8 + (timeMultiplier * 0.16); // scales turn rate with timeMultiplier to keep turning radius physically realistic
+          let turnSpeed = Math.min(Math.max(Math.abs(diff) * 0.15, 0.25), maxTurnSpeed);
           hdg = (hdg + Math.sign(diff) * turnSpeed + 360) % 360;
         }
 
@@ -220,30 +237,30 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
             const tPt = turf.point([target.coord[1], target.coord[0]]);
             const distToBuoy = turf.distance(bPt, tPt, { units: 'kilometers' });
 
-            // Check if we have passed the buoy plane (dot product of approach vector and boat position relative to buoy)
             let hasPassed = false;
+            let sideCorrect = true;
             const prevTarget = targets2[tIdx - 1];
             if (prevTarget) {
-              let pLat, pLng;
-              if (prevTarget.kind === 'buoy' && prevTarget.coord) { pLat = prevTarget.coord[0]; pLng = prevTarget.coord[1]; }
-              else if (prevTarget.coords) { pLat = (prevTarget.coords[0][0] + prevTarget.coords[1][0])/2; pLng = (prevTarget.coords[0][1] + prevTarget.coords[1][1])/2; }
-              
-              if (pLat !== undefined && pLng !== undefined) {
-                const vX = target.coord[1] - pLng;
-                const vY = target.coord[0] - pLat;
+              const prevCenter = getCheckpointCenter(prevTarget);
+              if (prevCenter) {
+                const vX = target.coord[1] - prevCenter.lng;
+                const vY = target.coord[0] - prevCenter.lat;
                 const wX = newLng - target.coord[1];
                 const wY = newLat - target.coord[0];
                 const dot = vX * wX + vY * wY;
                 if (dot > 0) {
                   hasPassed = true;
+                  const cross = vX * wY - vY * wX;
+                  const isPort = (target.rounding || 'port').toLowerCase() === 'port';
+                  sideCorrect = isPort ? (cross < 0) : (cross > 0);
                 }
               }
             } else {
               hasPassed = true;
             }
 
-            // We must be close to the buoy (under 80m) and have passed the plane, or be extremely close (20m safety fallback)
-            if ((hasPassed && distToBuoy < 0.08) || distToBuoy < 0.02) {
+            // We must be close to the buoy (under 75m) and have passed the plane on the correct side
+            if (hasPassed && sideCorrect && distToBuoy < 0.075) {
               targetIndexRef.current[boat.id] = tIdx + 1;
             }
           }

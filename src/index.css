@@ -159,7 +159,15 @@ main {
 .leaflet-container {
   width: 100%;
   height: 100%;
-  background: #F8FAFC;
+  background: #0b0f19;
+}
+
+/* Fix Leaflet 1px vertical and horizontal grid lines / tile gaps */
+.leaflet-tile-container img,
+.leaflet-tile {
+  outline: 1px solid transparent;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 .helm-dashboard {
@@ -1003,36 +1011,65 @@ main {
   background: transparent;
   border: none;
   touch-action: none;
-}
-
-.line-endpoint-hit-shell.leaflet-marker-draggable {
   cursor: grab;
 }
 
-.line-endpoint-hit-shell.leaflet-marker-draggable:active {
+.line-endpoint-hit-shell:active {
   cursor: grabbing;
 }
 
 .line-endpoint-hit {
-  width: 48px;
-  height: 48px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  background: transparent;
+  background: #ffffff;
+  border: 3.5px solid var(--accent-coral);
+  box-sizing: border-box;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+  margin: 14px; /* perfectly centers a 20px circle inside a 48px hit shell */
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .line-endpoint-hit.is-active {
-  box-shadow: 0 0 0 3px rgba(242, 100, 25, 0.45);
-  background: rgba(242, 100, 25, 0.12);
+  transform: scale(1.1);
+  box-shadow: 0 0 0 5px rgba(242, 100, 25, 0.35), 0 3px 6px rgba(0, 0, 0, 0.4);
+}
+
+.line-endpoint-hit-shell:hover .line-endpoint-hit {
+  transform: scale(1.35);
+  background-color: var(--accent-coral);
+  border-color: #ffffff;
+  box-shadow: 0 0 0 7px rgba(242, 100, 25, 0.5), 0 4px 10px rgba(0, 0, 0, 0.45);
 }
 
 .course-buoy-icon {
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: 52px;
+  height: 52px;
   display: flex;
   align-items: center;
   justify-content: center;
   filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.2));
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.2s ease;
+  cursor: grab;
+}
+
+.leaflet-marker-icon:hover .course-buoy-icon {
+  transform: scale(1.18);
+  filter: drop-shadow(0 4px 10px rgba(242, 100, 25, 0.45)) drop-shadow(0 2px 5px rgba(15, 23, 42, 0.35));
+}
+
+.course-buoy-icon:active {
+  cursor: grabbing;
+}
+
+/* Global grabbing override when active drag tracking is in progress */
+body.dragging-active,
+body.dragging-active .leaflet-container,
+body.dragging-active .leaflet-interactive,
+body.dragging-active .leaflet-marker-icon {
+  cursor: grabbing !important;
+  user-select: none;
 }
 
 .course-buoy-dot {
@@ -1349,10 +1386,16 @@ main {
 /* Buoy Turn Animation */
 .buoy-spin-ccw {
   animation: spin-ccw 6s linear infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+  display: flex !important;
 }
 
 .buoy-spin-cw {
   animation: spin-cw 6s linear infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+  display: flex !important;
 }
 
 @keyframes spin-ccw {

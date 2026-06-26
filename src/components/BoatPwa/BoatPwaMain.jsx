@@ -58,41 +58,72 @@ function MapInvalidator() {
   return null;
 }
 
-const createStaticBuoyIcon = (rounding = 'port') => {
-  return new L.DivIcon({
-    html: `<div style="width: 18px; height: 18px; border-radius: 50%; background: var(--accent-coral); border: 3px solid #fff; box-shadow: 0 2px 5px rgba(15,23,42,0.25);"></div>`,
-    className: '',
-    iconSize: [18, 18],
-    iconAnchor: [9, 9],
-  });
-};
-
-const createTargetBuoyIcon = (rounding) => {
+const createStaticBuoyIcon = (rounding = 'port', id = '') => {
   const isPort = rounding.toLowerCase() === 'port';
   const color = 'var(--accent-coral)';
   const svgPath = isPort 
     ? `<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>` 
     : `<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>`;
     
-  const animClass = isPort ? 'buoy-spin-ccw' : 'buoy-spin-cw';
-    
   return new L.DivIcon({
     html: `<div style="position: relative; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
-      <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="${animClass}">
+      <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.75;">
         ${svgPath}
       </svg>
-      <svg style="position: absolute;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" width="16" height="16">
-        <circle cx="12" cy="12" r="8"/>
-      </svg>
+      <div style="position:absolute;background:white;color:var(--text-primary);border:2px solid ${color};border-radius:50%;font-weight:950;font-size:12px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 1.5px 4px rgba(0,0,0,0.35);">${id.replace(/\D/g, '')}</div>
     </div>`,
+    className: '',
+    iconSize: [40, 40],
+    iconAnchor: [20, 20],
+  });
+};
+
+const createTargetBuoyIcon = (rounding, id = '') => {
+  const isPort = rounding.toLowerCase() === 'port';
+  const color = 'var(--accent-coral)';
+  const svgPath = isPort 
+    ? `<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>` 
+    : `<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>`;
+    
+  const localClass = isPort ? 'buoy-spin-ccw-local' : 'buoy-spin-cw-local';
+    
+  return new L.DivIcon({
+    html: `
+      <style>
+        @keyframes buoy-spin-ccw-kf {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(-360deg); }
+        }
+        @keyframes buoy-spin-cw-kf {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .buoy-spin-ccw-local {
+          animation: buoy-spin-ccw-kf 6s linear infinite !important;
+          transform-origin: center !important;
+          transform-box: fill-box !important;
+          display: flex !important;
+        }
+        .buoy-spin-cw-local {
+          animation: buoy-spin-cw-kf 6s linear infinite !important;
+          transform-origin: center !important;
+          transform-box: fill-box !important;
+          display: flex !important;
+        }
+      </style>
+      <div style="position: relative; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+        <div class="${localClass}" style="position: absolute; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            ${svgPath}
+          </svg>
+        </div>
+        <div style="position:absolute;background:white;color:var(--text-primary);border:2px solid ${color};border-radius:50%;font-weight:950;font-size:12px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 1.5px 4px rgba(0,0,0,0.35);">${id.replace(/\D/g, '')}</div>
+      </div>`,
     className: '',
     iconSize: [40, 40],
     iconAnchor: [20, 20]
   });
 };
-
-const portTargetIcon = createTargetBuoyIcon('PORT');
-const stbdTargetIcon = createTargetBuoyIcon('STBD');
 
 const getCheckpointKind = (checkpoint) => {
   if (checkpoint.kind) return checkpoint.kind;
@@ -106,15 +137,47 @@ const isRaceTarget = (checkpoint) => {
   return kind === 'start' || kind === 'buoy' || kind === 'gate' || kind === 'finish';
 };
 
+function MapCourseFitter({ course }) {
+  const map = useMap();
+  const lastFittedCourseIdRef = useRef(null);
+
+  useEffect(() => {
+    if (!course || !course.checkpoints || course.checkpoints.length === 0) return;
+    if (lastFittedCourseIdRef.current === course.id) return;
+    
+    lastFittedCourseIdRef.current = course.id;
+    
+    const pts = course.checkpoints.flatMap(cp => {
+      if (cp.coords) return cp.coords;
+      if (cp.coord) return [cp.coord];
+      return [];
+    });
+    
+    if (pts.length > 0) {
+      map.fitBounds(pts, { padding: [50, 50], animate: true });
+    }
+  }, [course, map]);
+
+  return null;
+}
+
 function MapControls({ pos, autoCenter, setAutoCenter }) {
   const map = useMap();
   const lastCenterEnableTime = useRef(0);
+  const lastPanTime = useRef(0);
   
   useEffect(() => {
     if (autoCenter && pos) {
       // Wait 1.2s before continuous panning to allow the initial flyTo animation to finish
       if (Date.now() - lastCenterEnableTime.current > 1200) {
-        map.setView([pos.lat, pos.lng], map.getZoom(), { animate: false });
+        const center = map.getCenter();
+        const dist = map.distance([pos.lat, pos.lng], center);
+        const now = Date.now();
+        // If the boat has moved more than 350m away from the center, smoothly pan to it
+        if (dist > 350 && now - lastPanTime.current > 6000) {
+          lastPanTime.current = now;
+          map.panTo([pos.lat, pos.lng], { animate: true, duration: 2.5, easeLinearity: 0.15 });
+        }
       }
     }
   }, [autoCenter, pos.lat, pos.lng, map]);
@@ -146,7 +209,7 @@ function MapControls({ pos, autoCenter, setAutoCenter }) {
           // Perform an immediate center and zoom
           if (!autoCenter) {
             lastCenterEnableTime.current = Date.now();
-            map.flyTo([pos.lat, pos.lng], 14, { duration: 1.2 });
+            map.flyTo([pos.lat, pos.lng], 15.5, { duration: 1.2 });
           }
           setAutoCenter(prev => !prev);
         }}
@@ -271,8 +334,8 @@ const ensureCheckpointsHaveCoords = (checkpoints) => {
         normalizedCp.coords = [coordA, coordB];
       } else {
         normalizedCp.coords = [
-          [37.0255, 27.4320],
-          [37.0255, 27.4330]
+          [36.9758, 27.4595],
+          [36.9758, 27.4605]
         ];
       }
     }
@@ -300,7 +363,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
   const [course, setCourse] = useState(null);
   const [simulatedPos, setSimulatedPos] = useState(() => {
     const saved = localStorage.getItem('simulated_boat_pos');
-    const pos = saved ? JSON.parse(saved) : { lat: 37.0255, lng: 27.4325 };
+    const pos = saved ? JSON.parse(saved) : { lat: 36.9758, lng: 27.4601 };
     return { ...pos, heading: 180, targetHeading: 180, speed: 6.0, timeMultiplier: 20 };
   });
 
@@ -333,7 +396,8 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
       const reverseBearing = (courseBearing + 180) % 360;
       const spawnPt = turf.destination(startPt, 0.4, reverseBearing, { units: 'kilometers' }); // 400 m behind start line
       const [spawnLng, spawnLat] = spawnPt.geometry.coordinates;
-      const newPos = { lat: spawnLat, lng: spawnLng, heading: 180, targetHeading: 180, speed: 6.0, timeMultiplier: 20 };
+      const initialHdg = (courseBearing + 360) % 360;
+      const newPos = { lat: spawnLat, lng: spawnLng, heading: initialHdg, targetHeading: initialHdg, speed: 6.0, timeMultiplier: 20 };
       setSimulatedPos(newPos);
       localStorage.setItem('simulated_boat_pos', JSON.stringify(newPos));
     }
@@ -784,6 +848,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
   let targetName = 'None';
   let targetRounding = '';
   let targetPos = null;
+  let targetDistanceStr = '';
   
   if (course && activePos) {
     const targets = course.checkpoints.filter(isRaceTarget);
@@ -810,6 +875,14 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
       relativeAngle = absoluteBearing - activePos.heading;
       while (relativeAngle <= -180) relativeAngle += 360;
       while (relativeAngle > 180) relativeAngle -= 360;
+
+      const distanceKm = turf.distance(pt1, pt2, { units: 'kilometers' });
+      const distanceNM = distanceKm * 0.539957;
+      if (distanceNM >= 0.1) {
+        targetDistanceStr = `${distanceNM.toFixed(2)} NM`;
+      } else {
+        targetDistanceStr = `${Math.round(distanceKm * 1000)} m`;
+      }
     } else {
       targetName = 'FINISHED';
     }
@@ -853,7 +926,8 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
 
   return (
     <div className="map-container">
-      <MapContainer center={[37.015, 27.420]} zoom={14} zoomSnap={0.1} maxZoom={22} zoomControl={false} attributionControl={false} preferCanvas={true} style={{ width: '100%', height: '100%' }}>
+      <MapContainer center={[37.015, 27.420]} zoom={15.5} zoomSnap={0.1} maxZoom={22} zoomControl={false} attributionControl={false} preferCanvas={true} style={{ width: '100%', height: '100%', background: '#0b0f19' }}>
+        <MapCourseFitter course={course} />
         <TileLayer
           url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
           maxZoom={22}
@@ -985,17 +1059,15 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
         )}
         
         {course && course.checkpoints.map((cp, idx) => {
-          if (cp.type === 'buoy') {
-             const isTarget = cp.id.toUpperCase() === targetName;
-             let iconToUse = createStaticBuoyIcon(cp.rounding || 'port');
+          const kind = getCheckpointKind(cp);
+          const isTarget = cp.id.toUpperCase() === targetName;
+          if (kind === 'buoy') {
+             let iconToUse = createStaticBuoyIcon(cp.rounding || 'port', cp.id);
              if (isTarget) {
-               iconToUse = cp.rounding.toUpperCase() === 'PORT' ? portTargetIcon : stbdTargetIcon;
+               iconToUse = createTargetBuoyIcon(cp.rounding || 'port', cp.id);
              }
-             return <Marker key={idx} position={[cp.coord[0], cp.coord[1]]} icon={iconToUse} opacity={isTarget ? 1 : 0.4} />;
-          } else if (cp.type === 'gate') {
-             const kind = getCheckpointKind(cp);
-             const isTarget = cp.id.toUpperCase() === targetName;
-             
+             return <Marker key={idx} position={[cp.coord[0], cp.coord[1]]} icon={iconToUse} opacity={isTarget ? 1 : 0.6} />;
+          } else if (kind === 'gate' || kind === 'start' || kind === 'finish') {
              const lineKind = kind === 'finish' ? 'finish' : kind === 'start' ? 'start' : 'gate';
              return (
                <RaceLineMarker
@@ -1041,8 +1113,15 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
                 <Info size={14} />
               </button>
             </span>
-            <span style={{ fontSize: '0.75rem', fontWeight: 900, color: 'var(--accent-coral)', display: 'flex', alignItems: 'center' }}>
-              <CircleDot size={14} strokeWidth={3} style={{ marginRight: '4px' }} /> {targetName}
+            <span style={{ fontSize: '0.75rem', fontWeight: 900, color: 'var(--accent-coral)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {targetDistanceStr && (
+                <span style={{ color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.75rem', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  {targetDistanceStr}
+                </span>
+              )}
+              <span style={{ display: 'flex', alignItems: 'center' }}>
+                <CircleDot size={14} strokeWidth={3} style={{ marginRight: '4px' }} /> {targetName}
+              </span>
               {targetRounding === 'PORT' && <CornerUpLeft size={16} strokeWidth={3} style={{ marginLeft: '4px' }} title="Port Rounding" />}
               {targetRounding === 'STARBOARD' && <CornerUpRight size={16} strokeWidth={3} style={{ marginLeft: '4px' }} title="Starboard Rounding" />}
             </span>

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Trash2, Copy, GripHorizontal, MapPin, Ruler } from 'lucide-react';
+import { Trash2, Copy, GripHorizontal, Compass, Ruler } from 'lucide-react';
 import { normalizeLineCrossing, getLineLengthMeters, formatLineLength } from '../../utils/raceLine';
 
 const POPUP_WIDTH = 240;
@@ -124,7 +124,7 @@ export default function ElementPopup({
             onPointerDown={(e) => e.stopPropagation()}
             style={{ color: showCoords ? 'var(--primary)' : 'var(--text-secondary)' }}
           >
-            <MapPin size={15} />
+            <Compass size={19} />
           </button>
           <button
             type="button"

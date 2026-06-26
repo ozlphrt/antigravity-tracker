@@ -51,18 +51,43 @@ const createRoundingBuoyIcon = (rounding, id = '') => {
   const svgPath = isPort
     ? '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>'
     : '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>';
-  const animClass = isPort ? 'buoy-spin-ccw' : 'buoy-spin-cw';
+  const localClass = isPort ? 'buoy-spin-ccw-local' : 'buoy-spin-cw-local';
 
   return new L.DivIcon({
-    html: `<div class="course-buoy-icon">
-      <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="${animClass}">
-        ${svgPath}
-      </svg>
-      <div style="position:absolute;color:#1e293b;font-weight:900;font-size:13px;display:flex;align-items:center;justify-content:center;width:100%;height:100%;">${id}</div>
-    </div>`,
+    html: `
+      <style>
+        @keyframes buoy-spin-ccw-kf {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(-360deg); }
+        }
+        @keyframes buoy-spin-cw-kf {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .buoy-spin-ccw-local {
+          animation: buoy-spin-ccw-kf 6s linear infinite !important;
+          transform-origin: center !important;
+          transform-box: fill-box !important;
+          display: flex !important;
+        }
+        .buoy-spin-cw-local {
+          animation: buoy-spin-cw-kf 6s linear infinite !important;
+          transform-origin: center !important;
+          transform-box: fill-box !important;
+          display: flex !important;
+        }
+      </style>
+      <div class="course-buoy-icon" style="width: 52px; height: 52px; display: flex; align-items: center; justify-content: center;">
+        <div class="${localClass}" style="position: absolute; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            ${svgPath}
+          </svg>
+        </div>
+        <div style="position:absolute;background:white;color:var(--text-primary);border:2px solid ${color};border-radius:50%;font-weight:900;font-size:13px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 4px rgba(0,0,0,0.35);">${id.replace(/\D/g, '')}</div>
+      </div>`,
     className: '',
-    iconSize: [40, 40],
-    iconAnchor: [20, 20],
+    iconSize: [52, 52],
+    iconAnchor: [26, 26],
   });
 };
 
@@ -145,7 +170,7 @@ const normalizeCourseObjects = (checkpoints) => {
     if ((res.kind === 'start' || res.kind === 'finish' || res.kind === 'gate') && !res.coords) {
       if (res.coord) {
         const center = turf.point([res.coord[1], res.coord[0]]);
-        const width = res.width || 120;
+        const width = res.width || 300;
         const rotation = res.rotationDeg !== undefined ? res.rotationDeg : 270;
         
         const angleA = (rotation + 90) % 360;
@@ -160,9 +185,11 @@ const normalizeCourseObjects = (checkpoints) => {
           [ptB.geometry.coordinates[1], ptB.geometry.coordinates[0]]
         ];
       } else {
+        const centerLng = 27.4601;
+        const offset = 0.001685;
         res.coords = [
-          [37.0255, 27.4320],
-          [37.0255, 27.4330]
+          [36.9758, centerLng - offset],
+          [36.9758, centerLng + offset]
         ];
       }
     }
@@ -250,36 +277,49 @@ function PopupPositionTracker({ selectedCheckpoint, onPositionUpdate, onClear })
 }
 
 /** Deselects on outside-click (tap on empty map) or spawns buoy on double-click */
-function MapDeselectHandler({ onDeselect, fabOpen, closeFab, onMapDblClick }) {
+function MapDeselectHandler({ onDeselect, onMapDblClick }) {
+  const lastClickRef = useRef({ time: 0, x: 0, y: 0 });
+
   useMapEvents({
-    click: () => {
-      if (fabOpen) { closeFab(); return; }
+    click: (e) => {
       onDeselect();
-    },
-    dblclick: (e) => {
-      const { lat, lng } = e.latlng;
-      onMapDblClick(lat, lng);
+      const now = Date.now();
+      const { x, y } = e.containerPoint;
+      const last = lastClickRef.current;
+      const timeDiff = now - last.time;
+      const dist = Math.hypot(x - last.x, y - last.y);
+
+      if (timeDiff < 300 && dist < 10) {
+        const { lat, lng } = e.latlng;
+        onMapDblClick(lat, lng);
+        lastClickRef.current = { time: 0, x: 0, y: 0 };
+      } else {
+        lastClickRef.current = { time: now, x, y };
+      }
     }
   });
   return null;
 }
 
-/** Draggable endpoint marker for line edges */
-function LineEndpointMarker({ position, isActive, label, onSelect, onMove }) {
+function LineEndpointMarker({ position, isActive, label, onSelect, onDragStart }) {
   return (
     <Marker
       position={position}
       icon={lineEndpointHitIcon(isActive)}
-      draggable={isActive}
-      autoPan={isActive}
+      draggable={false}
       title={label}
       eventHandlers={{
         click: (e) => { L.DomEvent.stopPropagation(e.originalEvent); onSelect(); },
-        dragend: (e) => {
+        mousedown: (e) => {
           if (!isActive) return;
-          const { lat, lng } = e.target.getLatLng();
-          onMove([lat, lng]);
+          L.DomEvent.stopPropagation(e.originalEvent);
+          onDragStart(e);
         },
+        touchstart: (e) => {
+          if (!isActive) return;
+          L.DomEvent.stopPropagation(e.originalEvent);
+          onDragStart(e);
+        }
       }}
     />
   );
@@ -299,8 +339,10 @@ function CourseConnectingLine({ checkpoints }) {
         weight: 4,
         opacity: 0.85,
         dashArray: '12, 14',
-        className: 'course-connecting-line'
+        className: 'course-connecting-line',
+        interactive: false
       }}
+      interactive={false}
     />
   );
 }
@@ -346,7 +388,7 @@ function MapControls({ pos, autoCenter, setAutoCenter }) {
           e.stopPropagation();
           if (!autoCenter) {
             lastCenterEnableTime.current = Date.now();
-            if (pos) map.flyTo([pos.lat, pos.lng], 14, { duration: 1.2 });
+            if (pos) map.flyTo([pos.lat, pos.lng], 15.5, { duration: 1.2 });
           }
           setAutoCenter(prev => !prev);
         }}
@@ -426,6 +468,9 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
   const [draftCheckpoints, setDraftCheckpoints] = useState([]);
   const [selectedCheckpointId, setSelectedCheckpointId] = useState(null);
   const [selectedLineEndpointIndex, setSelectedLineEndpointIndex] = useState(null);
+  const [hoveredLineId, setHoveredLineId] = useState(null);
+  const [draggingCheckpointId, setDraggingCheckpointId] = useState(null);
+  const [placementChoiceCoords, setPlacementChoiceCoords] = useState(null); // { lat, lng }
 
   // RC GPS live tracking
   const [isRcLiveMode, setIsRcLiveMode] = useState(true);
@@ -437,7 +482,6 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
   const [popupY, setPopupY] = useState(null);
 
   // UI state
-  const [fabOpen, setFabOpen] = useState(false);
   const [showCourseLines, setShowCourseLines] = useState(false);
   const [bottomSheetExpanded, setBottomSheetExpanded] = useState(false);
 
@@ -450,7 +494,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
   // Simulated Boat Position (for starting location in BoatPwaMain)
   const [simulatedBoatPos, setSimulatedBoatPos] = useState(() => {
     const saved = localStorage.getItem('simulated_boat_pos');
-    return saved ? JSON.parse(saved) : { lat: 37.0255, lng: 27.4325 };
+    return saved ? JSON.parse(saved) : { lat: 36.9758, lng: 27.4601 };
   });
 
   const handleSimBoatDragEnd = (e) => {
@@ -463,6 +507,8 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
   // Map ref (for placing elements at map center)
   const mapRef = useRef(null);
   const containerRef = useRef(null);
+  const lastFittedCourseIdRef = useRef(null);
+
 
   // Auto-calculated Sim Position (300m behind start line)
   const autoSimPos = useMemo(() => {
@@ -499,14 +545,22 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
   // ── Load ──
   useEffect(() => {
     if (courseDraft) {
+      if (!course || courseDraft.id !== course.id) {
+        lastFittedCourseIdRef.current = null;
+      }
       setCourse(courseDraft);
       setDraftCheckpoints(attachLineLengths(enforceCourseOrder(normalizeCourseObjects(courseDraft.checkpoints))));
       return;
     }
     supabase.getCourses().then((courses) => {
       const first = courses[0];
-      setCourse(first);
-      setDraftCheckpoints(attachLineLengths(enforceCourseOrder(normalizeCourseObjects(first.checkpoints))));
+      if (first) {
+        if (!course || first.id !== course.id) {
+          lastFittedCourseIdRef.current = null;
+        }
+        setCourse(first);
+        setDraftCheckpoints(attachLineLengths(enforceCourseOrder(normalizeCourseObjects(first.checkpoints))));
+      }
     });
   }, [courseDraft]);
 
@@ -521,6 +575,8 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
   // ── Fit Bounds on Course Load/Save ──
   useEffect(() => {
     if (!course || !course.checkpoints || course.checkpoints.length === 0) return;
+    if (lastFittedCourseIdRef.current === course.id) return;
+    lastFittedCourseIdRef.current = course.id;
     const fit = () => {
       if (!mapRef.current) return;
       const pts = [];
@@ -535,6 +591,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     if (mapRef.current) fit();
     else setTimeout(fit, 300);
   }, [course]);
+
 
   // ── Selection ──
   const selectCheckpoint = useCallback((id, endpointIndex = null) => {
@@ -584,8 +641,8 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
         });
       }, 0);
     } else {
-      // Line: place A ~60m west, B ~60m east
-      const lngOffset = 0.0006;
+      // Line: place A 150m west, B 150m east (total 300m initial length)
+      const lngOffset = 0.001685;
       const coords = [
         [lat, lng - lngOffset],
         [lat, lng + lngOffset],
@@ -685,27 +742,30 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
 
     map.dragging.disable();
     if (map.doubleClickZoom) map.doubleClickZoom.disable();
+    document.body.classList.add('dragging-active');
+    setDraggingCheckpointId(id);
 
-    const startLatLng = startEvent.latlng;
+    const startLatLng = startEvent.latlng || (startEvent.target && typeof startEvent.target.getLatLng === 'function' ? startEvent.target.getLatLng() : null) || map.mouseEventToLatLng(startEvent.originalEvent);
 
     const onMouseMove = (e) => {
+      if (!e.latlng || !startLatLng) return;
       const dLat = e.latlng.lat - startLatLng.lat;
       const dLng = e.latlng.lng - startLatLng.lng;
       updateBuoyPosition(id, [initialCoord[0] + dLat, initialCoord[1] + dLng]);
     };
 
     const onMouseUp = () => {
-      map.off('mousemove', onMouseMove);
-      map.off('mouseup', onMouseUp);
-      map.off('dragend', onMouseUp);
+      map.off('mousemove touchmove', onMouseMove);
+      map.off('mouseup dragend touchend', onMouseUp);
       map.dragging.enable();
       if (map.doubleClickZoom) map.doubleClickZoom.enable();
+      document.body.classList.remove('dragging-active');
+      setDraggingCheckpointId(null);
       selectCheckpoint(id, null);
     };
 
-    map.on('mousemove', onMouseMove);
-    map.on('mouseup', onMouseUp);
-    map.on('dragend', onMouseUp);
+    map.on('mousemove touchmove', onMouseMove);
+    map.on('mouseup dragend touchend', onMouseUp);
   }, [selectCheckpoint, updateBuoyPosition]);
 
   const startLineDrag = useCallback((id, initialCoords, startEvent) => {
@@ -714,10 +774,13 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
 
     map.dragging.disable();
     if (map.doubleClickZoom) map.doubleClickZoom.disable();
+    document.body.classList.add('dragging-active');
+    setDraggingCheckpointId(id);
 
-    const startLatLng = startEvent.latlng;
+    const startLatLng = startEvent.latlng || (startEvent.target && typeof startEvent.target.getLatLng === 'function' ? startEvent.target.getLatLng() : null) || map.mouseEventToLatLng(startEvent.originalEvent);
 
     const onMouseMove = (e) => {
+      if (!e.latlng || !startLatLng) return;
       const dLat = e.latlng.lat - startLatLng.lat;
       const dLng = e.latlng.lng - startLatLng.lng;
       const newCoords = initialCoords.map(p => [p[0] + dLat, p[1] + dLng]);
@@ -725,18 +788,50 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     };
 
     const onMouseUp = () => {
-      map.off('mousemove', onMouseMove);
-      map.off('mouseup', onMouseUp);
-      map.off('dragend', onMouseUp);
+      map.off('mousemove touchmove', onMouseMove);
+      map.off('mouseup dragend touchend', onMouseUp);
       map.dragging.enable();
       if (map.doubleClickZoom) map.doubleClickZoom.enable();
+      document.body.classList.remove('dragging-active');
+      setDraggingCheckpointId(null);
       selectCheckpoint(id, null);
     };
 
-    map.on('mousemove', onMouseMove);
-    map.on('mouseup', onMouseUp);
-    map.on('dragend', onMouseUp);
+    map.on('mousemove touchmove', onMouseMove);
+    map.on('mouseup dragend touchend', onMouseUp);
   }, [selectCheckpoint, updateLineCoords]);
+
+  const startEndpointDrag = useCallback((id, index, initialPoint, startEvent) => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    map.dragging.disable();
+    if (map.doubleClickZoom) map.doubleClickZoom.disable();
+    document.body.classList.add('dragging-active');
+    setDraggingCheckpointId(`${id}-ep-${index}`);
+
+    const startLatLng = startEvent.latlng || (startEvent.target && typeof startEvent.target.getLatLng === 'function' ? startEvent.target.getLatLng() : null) || map.mouseEventToLatLng(startEvent.originalEvent);
+
+    const onMouseMove = (e) => {
+      if (!e.latlng || !startLatLng) return;
+      const dLat = e.latlng.lat - startLatLng.lat;
+      const dLng = e.latlng.lng - startLatLng.lng;
+      updateLinePoint(id, index, [initialPoint[0] + dLat, initialPoint[1] + dLng]);
+    };
+
+    const onMouseUp = () => {
+      map.off('mousemove touchmove', onMouseMove);
+      map.off('mouseup dragend touchend', onMouseUp);
+      map.dragging.enable();
+      if (map.doubleClickZoom) map.doubleClickZoom.enable();
+      document.body.classList.remove('dragging-active');
+      setDraggingCheckpointId(null);
+      selectCheckpoint(id, index);
+    };
+
+    map.on('mousemove touchmove', onMouseMove);
+    map.on('mouseup dragend touchend', onMouseUp);
+  }, [selectCheckpoint, updateLinePoint]);
 
   const handleReorder = (activeId, overId) => {
     const trackingId = Math.random().toString();
@@ -808,10 +903,10 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     <div className="rc-map-full" ref={containerRef}>
       {/* ── Map ── */}
       <MapContainer
-        center={[37.0255, 27.4325]}
-        zoom={14}
+        center={[36.9758, 27.4601]}
+        zoom={15.5}
         zoomSnap={0.1}
-        style={{ width: '100%', height: '100%', background: '#F8FAFC' }}
+        style={{ width: '100%', height: '100%', background: '#0b0f19' }}
         ref={mapRef}
         zoomControl={false}
         preferCanvas={true}
@@ -829,9 +924,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
         <MapInvalidator />
         <MapDeselectHandler
           onDeselect={deselect}
-          fabOpen={fabOpen}
-          closeFab={() => setFabOpen(false)}
-          onMapDblClick={(lat, lng) => placeElement(lat, lng, 'buoy')}
+          onMapDblClick={(lat, lng) => setPlacementChoiceCoords({ lat, lng })}
         />
         <PopupPositionTracker
           selectedCheckpoint={selectedCheckpoint}
@@ -847,14 +940,12 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
           const isSelected = selectedCheckpoint?.id === checkpoint.id;
 
           if (checkpoint.kind === 'buoy') {
-            const deletePos = [checkpoint.coord[0] + 0.00012, checkpoint.coord[1] + 0.00016];
             return (
               <React.Fragment key={checkpoint.id}>
                 <Marker
                   position={checkpoint.coord}
                   icon={createRoundingBuoyIcon(checkpoint.rounding, checkpoint.id)}
-                  draggable={true}
-                  autoPan={true}
+                  draggable={false}
                   opacity={selectedCheckpoint && !isSelected ? 0.4 : 1}
                   eventHandlers={{
                     click: (e) => { L.DomEvent.stopPropagation(e.originalEvent); selectCheckpoint(checkpoint.id, null); },
@@ -867,36 +958,38 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                       L.DomEvent.stopPropagation(e.originalEvent);
                       startBuoyDrag(checkpoint.id, checkpoint.coord, e);
                     },
-                    dragstart: () => {
-                      selectCheckpoint(checkpoint.id, null);
-                    },
-                    dragend: (e) => {
-                      const { lat, lng } = e.target.getLatLng();
-                      updateBuoyPosition(checkpoint.id, [lat, lng]);
-                      selectCheckpoint(checkpoint.id, null);
+                    touchstart: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      startBuoyDrag(checkpoint.id, checkpoint.coord, e);
                     },
                   }}
                 />
-                {isSelected && (
-                  <>
-                    <CircleMarker
-                      center={checkpoint.coord}
-                      radius={24}
-                      pathOptions={{ color: '#F26419', fillColor: '#F26419', fillOpacity: 0.08, weight: 3 }}
-                    />
-                    <Marker
-                      position={deletePos}
-                      icon={createFloatingDeleteIcon()}
-                      zIndexOffset={1000}
-                      eventHandlers={{
-                        click: (e) => {
-                          L.DomEvent.stopPropagation(e.originalEvent);
-                          removeCheckpoint(checkpoint.id);
-                        }
-                      }}
-                    />
-                  </>
-                )}
+                <CircleMarker
+                  center={checkpoint.coord}
+                  radius={24}
+                  pathOptions={{
+                    color: '#F26419',
+                    fillColor: '#F26419',
+                    fillOpacity: isSelected ? 0.08 : 0,
+                    weight: isSelected ? 3 : 0,
+                    opacity: isSelected ? 1 : 0
+                  }}
+                  interactive={false}
+                />
+                {/* Active dragging glow ring */}
+                <CircleMarker
+                  center={checkpoint.coord}
+                  radius={28}
+                  pathOptions={{
+                    color: '#06b6d4',
+                    fillColor: '#06b6d4',
+                    fillOpacity: draggingCheckpointId === checkpoint.id ? 0.18 : 0,
+                    weight: draggingCheckpointId === checkpoint.id ? 4 : 0,
+                    opacity: draggingCheckpointId === checkpoint.id ? 1 : 0,
+                    dashArray: '6, 6',
+                  }}
+                  interactive={false}
+                />
               </React.Fragment>
             );
           }
@@ -905,30 +998,80 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
             const selectionColor = checkpoint.kind === 'start' ? '#DCFCE7'
               : checkpoint.kind === 'finish' ? '#FECACA' : '#FFFFFF';
             const midpoint = getLineMidpoint(checkpoint.coords);
-            const deletePos = [midpoint[0] + 0.00012, midpoint[1] + 0.00016];
 
             return (
               <React.Fragment key={checkpoint.id}>
-                {isSelected && (
-                  <Polyline
-                    positions={checkpoint.coords}
-                    color={selectionColor}
-                    weight={19}
-                    opacity={checkpoint.kind === 'finish' ? 0.55 : 0.95}
-                  />
-                )}
-                <RaceLineMarker
-                  coords={checkpoint.coords}
-                  kind={checkpoint.kind}
-                  crossing={checkpoint.crossing}
-                  opacity={selectedCheckpoint && !isSelected ? 0.4 : 1}
-                  interactive
+                <Polyline
+                  positions={checkpoint.coords}
+                  pathOptions={{
+                    color: selectionColor,
+                    weight: 19,
+                    opacity: isSelected ? (checkpoint.kind === 'finish' ? 0.55 : 0.95) : 0,
+                  }}
+                  interactive={false}
+                />
+                {/* Active drag highlight line */}
+                <Polyline
+                  positions={checkpoint.coords}
+                  pathOptions={{
+                    color: '#06b6d4',
+                    weight: 22,
+                    opacity: draggingCheckpointId === checkpoint.id ? 0.85 : 0,
+                    dashArray: '10, 10',
+                  }}
+                  interactive={false}
+                />
+                {/* Visual hover highlight polyline, shows up when user pointer is near the line */}
+                <Polyline
+                  positions={checkpoint.coords}
+                  pathOptions={{
+                    color: checkpoint.kind === 'start' ? '#4ade80' : checkpoint.kind === 'finish' ? '#f87171' : '#fbbf24',
+                    weight: 15,
+                    opacity: (hoveredLineId === checkpoint.id && !isSelected) ? 0.45 : 0,
+                  }}
+                  interactive={false}
+                />
+                {/* Thick invisible interaction area spanning the line coordinates to make it easy to select/drag from anywhere */}
+                <Polyline
+                  positions={checkpoint.coords}
+                  pathOptions={{
+                    color: '#ffffff',
+                    opacity: 0.01, // extremely faint solid color so browser hit test registers mouseover/out events
+                    weight: 32,
+                  }}
+                  interactive={true}
                   eventHandlers={{
                     click: (e) => { L.DomEvent.stopPropagation(e.originalEvent); selectCheckpoint(checkpoint.id, null); },
                     mousedown: (e) => {
                       L.DomEvent.stopPropagation(e.originalEvent);
                       startLineDrag(checkpoint.id, checkpoint.coords, e);
-                    }
+                    },
+                    touchstart: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      startLineDrag(checkpoint.id, checkpoint.coords, e);
+                    },
+                    mouseover: () => setHoveredLineId(checkpoint.id),
+                    mouseout: () => setHoveredLineId(null),
+                  }}
+                />
+                <RaceLineMarker
+                  coords={checkpoint.coords}
+                  kind={checkpoint.kind}
+                  crossing={checkpoint.crossing}
+                  opacity={selectedCheckpoint && !isSelected ? 0.4 : 1}
+                  interactive={true}
+                  eventHandlers={{
+                    click: (e) => { L.DomEvent.stopPropagation(e.originalEvent); selectCheckpoint(checkpoint.id, null); },
+                    mousedown: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      startLineDrag(checkpoint.id, checkpoint.coords, e);
+                    },
+                    touchstart: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      startLineDrag(checkpoint.id, checkpoint.coords, e);
+                    },
+                    mouseover: () => setHoveredLineId(checkpoint.id),
+                    mouseout: () => setHoveredLineId(null),
                   }}
                 />
                 {/* ID label chip above line midpoint */}
@@ -937,8 +1080,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                   position={midpoint}
                   icon={createLineIdLabelIcon(checkpoint.id, isSelected)}
                   interactive={true}
-                  draggable={true}
-                  autoPan={true}
+                  draggable={false}
                   zIndexOffset={300}
                   eventHandlers={{
                     click: (e) => { L.DomEvent.stopPropagation(e.originalEvent); selectCheckpoint(checkpoint.id, null); },
@@ -951,33 +1093,14 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                       L.DomEvent.stopPropagation(e.originalEvent);
                       startLineDrag(checkpoint.id, checkpoint.coords, e);
                     },
-                    dragstart: () => {
-                      selectCheckpoint(checkpoint.id, null);
+                    touchstart: (e) => {
+                      L.DomEvent.stopPropagation(e.originalEvent);
+                      startLineDrag(checkpoint.id, checkpoint.coords, e);
                     },
-                    dragend: (e) => {
-                      const { lat, lng } = e.target.getLatLng();
-                      const oldMidpoint = getLineMidpoint(checkpoint.coords);
-                      const dLat = lat - oldMidpoint[0];
-                      const dLng = lng - oldMidpoint[1];
-                      const newCoords = checkpoint.coords.map(p => [p[0] + dLat, p[1] + dLng]);
-                      updateLineCoords(checkpoint.id, newCoords);
-                      selectCheckpoint(checkpoint.id, null);
-                    }
+                    mouseover: () => setHoveredLineId(checkpoint.id),
+                    mouseout: () => setHoveredLineId(null),
                   }}
                 />
-                {isSelected && (
-                  <Marker
-                    position={deletePos}
-                    icon={createFloatingDeleteIcon()}
-                    zIndexOffset={1000}
-                    eventHandlers={{
-                      click: (e) => {
-                        L.DomEvent.stopPropagation(e.originalEvent);
-                        removeCheckpoint(checkpoint.id);
-                      }
-                    }}
-                  />
-                )}
                 {/* Draggable endpoint handles */}
                 {checkpoint.coords.map((point, index) => (
                   <LineEndpointMarker
@@ -986,7 +1109,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                     isActive={isSelected}
                     label={`${checkpoint.id} point ${index === 0 ? 'A' : 'B'}`}
                     onSelect={() => selectCheckpoint(checkpoint.id, index)}
-                    onMove={(pt) => updateLinePoint(checkpoint.id, index, pt)}
+                    onDragStart={(e) => startEndpointDrag(checkpoint.id, index, point, e)}
                   />
                 ))}
               </React.Fragment>
@@ -1032,7 +1155,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
 
 
       {/* ── Floating popup overlay ── */}
-      {selectedCheckpoint && popupX != null && popupY != null && (
+      {selectedCheckpoint && !draggingCheckpointId && popupX != null && popupY != null && (
         <div className="rc-popup-overlay">
           <ElementPopup
             checkpoint={selectedCheckpoint}
@@ -1055,22 +1178,24 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
 
       {/* ── FAB stack ── */}
       <div className="rc-fab-stack" style={{ position: 'absolute' }}>
-        {/* Save/Open above connecting line */}
+        {/* Add Line directly */}
         <button
           type="button"
           className="rc-course-line-btn"
-          title="Save Course"
-          onClick={handleSaveCourseClick}
+          title="Add Line"
+          onClick={() => placeAtCenter('gate')}
         >
-          <Save size={20} />
+          <GitBranch size={20} color="#33658A" />
         </button>
+
+        {/* Add Buoy directly */}
         <button
           type="button"
           className="rc-course-line-btn"
-          title="Open Course"
-          onClick={handleOpenCoursesList}
+          title="Add Buoy"
+          onClick={() => placeAtCenter('buoy')}
         >
-          <FolderOpen size={20} />
+          <CircleDot size={20} color="#F26419" />
         </button>
 
         {/* Course connecting line toggle */}
@@ -1083,34 +1208,25 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
           <Route size={20} />
         </button>
 
-        {/* FAB */}
-        <div style={{ position: 'relative' }}>
-          {fabOpen && (
-            <div className="rc-fab-menu">
-              <button type="button" onClick={() => { placeAtCenter('gate'); setFabOpen(false); }}>
-                <GitBranch size={18} color="#33658A" /> Add Line
-              </button>
-              <button type="button" onClick={() => { placeAtCenter('buoy'); setFabOpen(false); }}>
-                <CircleDot size={18} color="#F26419" /> Add Buoy
-              </button>
-              <div style={{ height: '1px', background: '#E2E8F0', margin: '4px 0' }} />
-              <button type="button" onClick={() => { setFabOpen(false); setIsOpenModalVisible(true); }}>
-                <FolderOpen size={18} color="#475569" /> Open Course
-              </button>
-              <button type="button" onClick={() => { setFabOpen(false); setIsSaveModalVisible(true); }}>
-                <Save size={18} color="#475569" /> Save / Done
-              </button>
-            </div>
-          )}
-          <button
-            type="button"
-            className={`rc-fab${fabOpen ? ' open' : ''}`}
-            aria-label={fabOpen ? 'Close menu' : 'Add element'}
-            onClick={() => setFabOpen((v) => !v)}
-          >
-            {fabOpen ? <X size={24} /> : <Plus size={24} />}
-          </button>
-        </div>
+        {/* Save Course */}
+        <button
+          type="button"
+          className="rc-course-line-btn"
+          title="Save Course"
+          onClick={handleSaveCourseClick}
+        >
+          <Save size={20} />
+        </button>
+
+        {/* Open Course */}
+        <button
+          type="button"
+          className="rc-course-line-btn"
+          title="Open Course"
+          onClick={handleOpenCoursesList}
+        >
+          <FolderOpen size={20} />
+        </button>
       </div>
 
       {/* ── Bottom sheet ── */}
@@ -1145,7 +1261,13 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                   <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F8FAFC', padding: '12px', borderRadius: '8px' }}>
                     <div
                       style={{ cursor: 'pointer', flex: 1, fontWeight: '500' }}
-                      onClick={() => { setCourse(c); onCourseChange(c); setIsOpenModalVisible(false); setDraftCheckpoints(enforceCourseOrder(normalizeCourseObjects(c.checkpoints))); }}
+                      onClick={() => {
+                        lastFittedCourseIdRef.current = null;
+                        setCourse(c);
+                        onCourseChange(c);
+                        setIsOpenModalVisible(false);
+                        setDraftCheckpoints(enforceCourseOrder(normalizeCourseObjects(c.checkpoints)));
+                      }}
                     >
                       {c.name}
                     </div>
@@ -1196,6 +1318,44 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                 onClick={() => handleConfirmSave(false)}
               >
                 Overwrite "{course?.name}"
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Element Choice Overlay Modal ── */}
+      {placementChoiceCoords && (
+        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: 'white', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '320px', boxShadow: 'var(--shadow-xl)', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '1.25rem', color: 'var(--text-primary)', fontWeight: 800 }}>Add Element</h3>
+            <p style={{ margin: '0 0 20px 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Select what type of element to place at this location</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <button
+                type="button"
+                style={{ padding: '12px', borderRadius: '10px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', border: 'none', background: '#33658A', color: 'white', cursor: 'pointer' }}
+                onClick={() => {
+                  placeElement(placementChoiceCoords.lat, placementChoiceCoords.lng, 'gate');
+                  setPlacementChoiceCoords(null);
+                }}
+              >
+                <GitBranch size={18} /> Add Line
+              </button>
+              <button
+                type="button"
+                style={{ padding: '12px', borderRadius: '10px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', border: 'none', background: '#F26419', color: 'white', cursor: 'pointer' }}
+                onClick={() => {
+                  placeElement(placementChoiceCoords.lat, placementChoiceCoords.lng, 'buoy');
+                  setPlacementChoiceCoords(null);
+                }}
+              >
+                <CircleDot size={18} /> Add Buoy
+              </button>
+              <button
+                type="button"
+                style={{ padding: '10px', borderRadius: '10px', border: '1px solid #CBD5E1', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', marginTop: '4px' }}
+                onClick={() => setPlacementChoiceCoords(null)}
+              >
+                Cancel
               </button>
             </div>
           </div>
