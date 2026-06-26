@@ -887,7 +887,6 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
     const map = mapRef.current;
     if (!map) return;
 
-    // Prevent mobile page scroll/pan on touchstart
     if (startEvent.originalEvent?.cancelable) {
       startEvent.originalEvent.preventDefault();
     }
@@ -899,9 +898,9 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
 
     const startLatLng = getEventLatLng(startEvent, map);
 
-    const onMouseMove = (e) => {
-      if (e.originalEvent?.cancelable) {
-        e.originalEvent.preventDefault();
+    const onMove = (e) => {
+      if (e.cancelable) {
+        e.preventDefault();
       }
       const latlng = getEventLatLng(e, map);
       if (!latlng || !startLatLng) return;
@@ -910,9 +909,13 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
       updateBuoyPosition(id, [initialCoord[0] + dLat, initialCoord[1] + dLng]);
     };
 
-    const onMouseUp = () => {
-      map.off('mousemove touchmove', onMouseMove);
-      map.off('mouseup dragend touchend', onMouseUp);
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove, { capture: true });
+      window.removeEventListener('touchmove', onMove, { capture: true, passive: false });
+      window.removeEventListener('mouseup', onUp, { capture: true });
+      window.removeEventListener('touchend', onUp, { capture: true });
+      window.removeEventListener('touchcancel', onUp, { capture: true });
+
       map.dragging.enable();
       if (map.doubleClickZoom) map.doubleClickZoom.enable();
       document.body.classList.remove('dragging-active');
@@ -920,8 +923,11 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
       selectCheckpoint(id, null);
     };
 
-    map.on('mousemove touchmove', onMouseMove);
-    map.on('mouseup dragend touchend', onMouseUp);
+    window.addEventListener('mousemove', onMove, { capture: true });
+    window.addEventListener('touchmove', onMove, { capture: true, passive: false });
+    window.addEventListener('mouseup', onUp, { capture: true });
+    window.addEventListener('touchend', onUp, { capture: true });
+    window.addEventListener('touchcancel', onUp, { capture: true });
   }, [selectCheckpoint, updateBuoyPosition, getEventLatLng]);
 
   const startLineDrag = useCallback((id, initialCoords, startEvent) => {
@@ -939,9 +945,9 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
 
     const startLatLng = getEventLatLng(startEvent, map);
 
-    const onMouseMove = (e) => {
-      if (e.originalEvent?.cancelable) {
-        e.originalEvent.preventDefault();
+    const onMove = (e) => {
+      if (e.cancelable) {
+        e.preventDefault();
       }
       const latlng = getEventLatLng(e, map);
       if (!latlng || !startLatLng) return;
@@ -951,9 +957,13 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
       updateLineCoords(id, newCoords);
     };
 
-    const onMouseUp = () => {
-      map.off('mousemove touchmove', onMouseMove);
-      map.off('mouseup dragend touchend', onMouseUp);
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove, { capture: true });
+      window.removeEventListener('touchmove', onMove, { capture: true, passive: false });
+      window.removeEventListener('mouseup', onUp, { capture: true });
+      window.removeEventListener('touchend', onUp, { capture: true });
+      window.removeEventListener('touchcancel', onUp, { capture: true });
+
       map.dragging.enable();
       if (map.doubleClickZoom) map.doubleClickZoom.enable();
       document.body.classList.remove('dragging-active');
@@ -961,8 +971,11 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
       selectCheckpoint(id, null);
     };
 
-    map.on('mousemove touchmove', onMouseMove);
-    map.on('mouseup dragend touchend', onMouseUp);
+    window.addEventListener('mousemove', onMove, { capture: true });
+    window.addEventListener('touchmove', onMove, { capture: true, passive: false });
+    window.addEventListener('mouseup', onUp, { capture: true });
+    window.addEventListener('touchend', onUp, { capture: true });
+    window.addEventListener('touchcancel', onUp, { capture: true });
   }, [selectCheckpoint, updateLineCoords, getEventLatLng]);
 
   const startEndpointDrag = useCallback((id, index, initialPoint, startEvent) => {
@@ -980,9 +993,9 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
 
     const startLatLng = getEventLatLng(startEvent, map);
 
-    const onMouseMove = (e) => {
-      if (e.originalEvent?.cancelable) {
-        e.originalEvent.preventDefault();
+    const onMove = (e) => {
+      if (e.cancelable) {
+        e.preventDefault();
       }
       const latlng = getEventLatLng(e, map);
       if (!latlng || !startLatLng) return;
@@ -991,9 +1004,13 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
       updateLinePoint(id, index, [initialPoint[0] + dLat, initialPoint[1] + dLng]);
     };
 
-    const onMouseUp = () => {
-      map.off('mousemove touchmove', onMouseMove);
-      map.off('mouseup dragend touchend', onMouseUp);
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove, { capture: true });
+      window.removeEventListener('touchmove', onMove, { capture: true, passive: false });
+      window.removeEventListener('mouseup', onUp, { capture: true });
+      window.removeEventListener('touchend', onUp, { capture: true });
+      window.removeEventListener('touchcancel', onUp, { capture: true });
+
       map.dragging.enable();
       if (map.doubleClickZoom) map.doubleClickZoom.enable();
       document.body.classList.remove('dragging-active');
@@ -1001,8 +1018,11 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
       selectCheckpoint(id, index);
     };
 
-    map.on('mousemove touchmove', onMouseMove);
-    map.on('mouseup dragend touchend', onMouseUp);
+    window.addEventListener('mousemove', onMove, { capture: true });
+    window.addEventListener('touchmove', onMove, { capture: true, passive: false });
+    window.addEventListener('mouseup', onUp, { capture: true });
+    window.addEventListener('touchend', onUp, { capture: true });
+    window.addEventListener('touchcancel', onUp, { capture: true });
   }, [selectCheckpoint, updateLinePoint, getEventLatLng]);
 
   const handleReorder = (activeId, overId) => {
