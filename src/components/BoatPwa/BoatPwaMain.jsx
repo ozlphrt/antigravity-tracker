@@ -570,9 +570,9 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
              if (crossingSide === 'center') {
                arrowBearing = target.rotationDeg || 0;
              } else {
-               const lineBearing = turf.bearing(ptA, ptB);
-               arrowBearing = lineBearing + (crossingSide === 'up' ? -90 : 90);
-             }
+                const lineBearing = turf.bearing(ptA, ptB);
+                arrowBearing = (lineBearing + (crossingSide === 'up' ? -90 : 90) + 360) % 360;
+              }
              
              // Approach point is 40m "behind" the line target point
              const reverseArrowBearing = (arrowBearing + 180) % 360;
@@ -641,7 +641,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           arrowBearing = startLine.rotationDeg || 0;
         } else {
           const lineBearing = turf.bearing(ptA, ptB);
-          arrowBearing = lineBearing + (crossingSide === 'up' ? -90 : 90);
+          arrowBearing = (lineBearing + (crossingSide === 'up' ? -90 : 90) + 360) % 360;
         }
         
         const reverseBearing = (arrowBearing + 180) % 360;

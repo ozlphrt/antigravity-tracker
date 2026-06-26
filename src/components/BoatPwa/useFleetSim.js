@@ -23,13 +23,12 @@ function getCheckpointCenter(cp) {
   return null;
 }
 
-/** Compute arrowBearing for a line checkpoint */
 function getLineBearing(cp) {
   if (cp.crossing === 'center') return (cp.rotationDeg || 0);
   const ptA = turf.point([cp.coords[0][1], cp.coords[0][0]]);
   const ptB = turf.point([cp.coords[1][1], cp.coords[1][0]]);
   const lb = turf.bearing(ptA, ptB);
-  return lb + (cp.crossing === 'up' ? -90 : 90);
+  return (lb + (cp.crossing === 'up' ? -90 : 90) + 360) % 360;
 }
 
 /** Spawn positions: staggered side-by-side behind the start line */

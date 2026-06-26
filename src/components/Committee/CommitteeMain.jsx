@@ -580,7 +580,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
         const ptB = turf.point([startLine.coords[1][1], startLine.coords[1][0]]);
         const lineBearing = turf.bearing(ptA, ptB);
         const crossingSide = startLine.crossing || 'up';
-        arrowBearing = lineBearing + (crossingSide === 'up' ? -90 : 90);
+        arrowBearing = (lineBearing + (crossingSide === 'up' ? -90 : 90) + 360) % 360;
       }
       
       const reverseBearing = (arrowBearing + 180) % 360;
