@@ -30,7 +30,8 @@ class MockSupabase {
         const c1Index = parsed.findIndex(c => c.id === 'course-1');
         if (c1Index >= 0) {
           const firstCp = parsed[c1Index].checkpoints?.[0];
-          if (!firstCp || !firstCp.coord || Math.abs(firstCp.coord[0] - 36.980) > 0.01 || parsed[c1Index].checkpoints.length === 0 || parsed[c1Index].name !== 'Karaada Course') {
+          // Only reset if empty, or if it is still using the old Bodrum coordinates (near 37.0255)
+          if (!firstCp || !firstCp.coord || Math.abs(firstCp.coord[0] - 37.0255) < 0.01 || parsed[c1Index].checkpoints.length === 0) {
             parsed[c1Index] = defaultCourse;
             localStorage.setItem('rc_courses', JSON.stringify(parsed));
           }
