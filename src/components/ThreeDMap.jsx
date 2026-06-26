@@ -69,17 +69,6 @@ export default function ThreeDMap({
         exaggeration: 1.8
       });
 
-      map.addLayer({
-        id: 'sky',
-        type: 'sky',
-        paint: {
-          'sky-type': 'atmosphere',
-          'sky-atmosphere-color': 'rgba(11, 15, 25, 0.9)',
-          'sky-atmosphere-halo-color': 'rgba(6, 182, 212, 0.45)',
-          'sky-atmosphere-sun-intensity': 12
-        }
-      });
-
       map.addSource('course-lines', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
