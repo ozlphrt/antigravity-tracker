@@ -736,6 +736,24 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     if (selectedCheckpointId === id) deselect();
   };
 
+  // Helper to extract latlng from mouse or touch event on map/marker
+  const getEventLatLng = useCallback((event, leafMap) => {
+    if (event.latlng) return event.latlng;
+    if (event.target && typeof event.target.getLatLng === 'function') {
+      return event.target.getLatLng();
+    }
+    const orig = event.originalEvent || event;
+    if (orig) {
+      const touch = orig.touches?.[0] || orig.changedTouches?.[0];
+      if (touch) {
+        return leafMap.mouseEventToLatLng(touch);
+      }
+      // Bypasses desktop mouseEventToLatLng if coordinates exist directly
+      return leafMap.mouseEventToLatLng(orig);
+    }
+    return null;
+  }, []);
+
   const startBuoyDrag = useCallback((id, initialCoord, startEvent) => {
     const map = mapRef.current;
     if (!map) return;
@@ -745,12 +763,13 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     document.body.classList.add('dragging-active');
     setDraggingCheckpointId(id);
 
-    const startLatLng = startEvent.latlng || (startEvent.target && typeof startEvent.target.getLatLng === 'function' ? startEvent.target.getLatLng() : null) || map.mouseEventToLatLng(startEvent.originalEvent);
+    const startLatLng = getEventLatLng(startEvent, map);
 
     const onMouseMove = (e) => {
-      if (!e.latlng || !startLatLng) return;
-      const dLat = e.latlng.lat - startLatLng.lat;
-      const dLng = e.latlng.lng - startLatLng.lng;
+      const latlng = getEventLatLng(e, map);
+      if (!latlng || !startLatLng) return;
+      const dLat = latlng.lat - startLatLng.lat;
+      const dLng = latlng.lng - startLatLng.lng;
       updateBuoyPosition(id, [initialCoord[0] + dLat, initialCoord[1] + dLng]);
     };
 
@@ -766,7 +785,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
 
     map.on('mousemove touchmove', onMouseMove);
     map.on('mouseup dragend touchend', onMouseUp);
-  }, [selectCheckpoint, updateBuoyPosition]);
+  }, [selectCheckpoint, updateBuoyPosition, getEventLatLng]);
 
   const startLineDrag = useCallback((id, initialCoords, startEvent) => {
     const map = mapRef.current;
@@ -777,12 +796,13 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     document.body.classList.add('dragging-active');
     setDraggingCheckpointId(id);
 
-    const startLatLng = startEvent.latlng || (startEvent.target && typeof startEvent.target.getLatLng === 'function' ? startEvent.target.getLatLng() : null) || map.mouseEventToLatLng(startEvent.originalEvent);
+    const startLatLng = getEventLatLng(startEvent, map);
 
     const onMouseMove = (e) => {
-      if (!e.latlng || !startLatLng) return;
-      const dLat = e.latlng.lat - startLatLng.lat;
-      const dLng = e.latlng.lng - startLatLng.lng;
+      const latlng = getEventLatLng(e, map);
+      if (!latlng || !startLatLng) return;
+      const dLat = latlng.lat - startLatLng.lat;
+      const dLng = latlng.lng - startLatLng.lng;
       const newCoords = initialCoords.map(p => [p[0] + dLat, p[1] + dLng]);
       updateLineCoords(id, newCoords);
     };
@@ -799,7 +819,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
 
     map.on('mousemove touchmove', onMouseMove);
     map.on('mouseup dragend touchend', onMouseUp);
-  }, [selectCheckpoint, updateLineCoords]);
+  }, [selectCheckpoint, updateLineCoords, getEventLatLng]);
 
   const startEndpointDrag = useCallback((id, index, initialPoint, startEvent) => {
     const map = mapRef.current;
@@ -810,12 +830,13 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     document.body.classList.add('dragging-active');
     setDraggingCheckpointId(`${id}-ep-${index}`);
 
-    const startLatLng = startEvent.latlng || (startEvent.target && typeof startEvent.target.getLatLng === 'function' ? startEvent.target.getLatLng() : null) || map.mouseEventToLatLng(startEvent.originalEvent);
+    const startLatLng = getEventLatLng(startEvent, map);
 
     const onMouseMove = (e) => {
-      if (!e.latlng || !startLatLng) return;
-      const dLat = e.latlng.lat - startLatLng.lat;
-      const dLng = e.latlng.lng - startLatLng.lng;
+      const latlng = getEventLatLng(e, map);
+      if (!latlng || !startLatLng) return;
+      const dLat = latlng.lat - startLatLng.lat;
+      const dLng = latlng.lng - startLatLng.lng;
       updateLinePoint(id, index, [initialPoint[0] + dLat, initialPoint[1] + dLng]);
     };
 
@@ -831,7 +852,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
 
     map.on('mousemove touchmove', onMouseMove);
     map.on('mouseup dragend touchend', onMouseUp);
-  }, [selectCheckpoint, updateLinePoint]);
+  }, [selectCheckpoint, updateLinePoint, getEventLatLng]);
 
   const handleReorder = (activeId, overId) => {
     const trackingId = Math.random().toString();
