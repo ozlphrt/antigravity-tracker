@@ -915,9 +915,9 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
   };
 
   const handleConfirmSave = (isNew) => {
-    const finalName = isNew ? (newCourseName.trim() || 'New Course') : course.name;
-    const finalId = isNew ? `course-${Date.now()}` : course.id;
-    const courseToSave = { ...course, id: finalId, name: finalName, checkpoints: attachLineLengths(draftCheckpoints) };
+    const finalName = isNew ? (newCourseName.trim() || 'New Course') : (course?.name || 'New Course');
+    const finalId = isNew ? `course-${Date.now()}` : (course?.id || `course-${Date.now()}`);
+    const courseToSave = { ...(course || {}), id: finalId, name: finalName, checkpoints: attachLineLengths(draftCheckpoints) };
     supabase.saveCourse(courseToSave).then(() => {
       setCourse(courseToSave);
       onCourseChange(courseToSave);
@@ -926,8 +926,24 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
     });
   };
 
+  const handleClearCourse = () => {
+    if (window.confirm("Are you sure you want to clear the current draft and start fresh?")) {
+      setDraftCheckpoints([]);
+      setCourse(null);
+      onCourseChange(null);
+      deselect();
+    }
+  };
+
   const handleDeleteCourse = (id) => {
-    supabase.deleteCourse(id).then(() => setSavedCourses((prev) => prev.filter((c) => c.id !== id)));
+    supabase.deleteCourse(id).then(() => {
+      setSavedCourses((prev) => prev.filter((c) => c.id !== id));
+      if (course?.id === id) {
+        setCourse(null);
+        setDraftCheckpoints([]);
+        onCourseChange(null);
+      }
+    });
   };
 
   // ── Container dimensions for popup clamping ──
@@ -1261,6 +1277,18 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
           <Save size={20} />
         </button>
 
+        {/* Clear Draft */}
+        <button
+          type="button"
+          className="rc-course-line-btn"
+          title="Clear Draft"
+          onClick={handleClearCourse}
+          disabled={draftCheckpoints.length === 0}
+          style={{ opacity: draftCheckpoints.length === 0 ? 0.5 : 1 }}
+        >
+          <Trash2 size={20} color="#EF4444" />
+        </button>
+
         {/* Open Course */}
         <button
           type="button"
@@ -1271,6 +1299,32 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
           <FolderOpen size={20} />
         </button>
       </div>
+
+      {/* ── Instructional overlay when empty ── */}
+      {draftCheckpoints.length === 0 && (
+        <div style={{
+          position: 'absolute',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 1000,
+          background: 'rgba(15, 23, 42, 0.9)',
+          backdropFilter: 'blur(12px)',
+          border: '1px solid rgba(255, 255, 255, 0.15)',
+          padding: '12px 20px',
+          borderRadius: '12px',
+          color: 'white',
+          boxShadow: 'var(--shadow-lg)',
+          fontSize: '0.875rem',
+          pointerEvents: 'none',
+          textAlign: 'center',
+          width: '90%',
+          maxWidth: '360px',
+          boxSizing: 'border-box'
+        }}>
+          💡 <strong>Double-click</strong> on the map or use the <strong>buoy/line buttons</strong> on the right to start designing your course.
+        </div>
+      )}
 
       {/* ── Bottom sheet ── */}
       <CourseBottomSheet
@@ -1359,8 +1413,10 @@ export default function CommitteeMain({ courseDraft, onCourseChange }) {
                 type="button"
                 className="action-button secondary"
                 onClick={() => handleConfirmSave(false)}
+                disabled={!course}
+                style={{ opacity: course ? 1 : 0.5, cursor: course ? 'pointer' : 'not-allowed' }}
               >
-                Overwrite "{course?.name}"
+                {course ? `Overwrite "${course.name}"` : 'Overwrite (No course active)'}
               </button>
             </div>
           </div>

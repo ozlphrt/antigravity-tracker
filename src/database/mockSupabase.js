@@ -8,35 +8,15 @@ class MockSupabase {
       courses: [],
       tracks: []
     };
-    this.listeners = {};
-    
-    // Default initial data: Bodrum Bay Demo Course (sails in open water of Bodrum Bay without land crossings)
-    const defaultCourse = {
-      id: 'course-bodrum-demo',
-      name: 'Bodrum Bay Demo',
-      checkpoints: [
-        { id: 'start', type: 'start', coord: [37.020, 27.430], width: 100, rotationDeg: 240, crossing: 'center' },
-        { id: 'buoy-1', type: 'buoy', coord: [37.008, 27.415], rounding: 'port' },
-        { id: 'buoy-2', type: 'buoy', coord: [37.012, 27.442], rounding: 'starboard' },
-        { id: 'finish', type: 'finish', coord: [37.020, 27.430], width: 100, rotationDeg: 240, crossing: 'center' }
-      ]
-    };
-
     const storedCourses = localStorage.getItem('rc_courses');
     if (storedCourses) {
       try {
-        const parsed = JSON.parse(storedCourses);
-        // Ensure our default course is available in the list
-        if (!parsed.find(c => c.id === 'course-bodrum-demo')) {
-          parsed.unshift(defaultCourse);
-          localStorage.setItem('rc_courses', JSON.stringify(parsed));
-        }
-        this.db.courses = parsed;
+        this.db.courses = JSON.parse(storedCourses);
       } catch (e) {
-        this.db.courses = [defaultCourse];
+        this.db.courses = [];
       }
     } else {
-      this.db.courses = [defaultCourse];
+      this.db.courses = [];
       this._saveToLocalStorage();
     }
     
