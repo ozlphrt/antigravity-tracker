@@ -10,43 +10,19 @@ class MockSupabase {
     };
     this.listeners = {};
     
-    // Default initial data
-    const defaultCourse = {
-      id: 'course-1',
-      name: 'Karaada Course',
-      checkpoints: [
-        { id: 'start', type: 'start', coord: [36.980, 27.460], width: 100, rotationDeg: 270, crossing: 'center' },
-        { id: 'buoy-1', type: 'buoy', coord: [36.965, 27.440], rounding: 'port' },
-        { id: 'buoy-2', type: 'buoy', coord: [36.965, 27.480], rounding: 'starboard' },
-        { id: 'finish', type: 'finish', coord: [36.980, 27.460], width: 100, rotationDeg: 270, crossing: 'center' }
-      ]
-    };
-
     const storedCourses = localStorage.getItem('rc_courses');
     if (storedCourses) {
       try {
-        const parsed = JSON.parse(storedCourses);
-        // Force upgrade course-1 if it was saved with old Bodrum Bay coordinates, is missing checkpoints, or is not near Karaada
-        const c1Index = parsed.findIndex(c => c.id === 'course-1');
-        if (c1Index >= 0) {
-          const firstCp = parsed[c1Index].checkpoints?.[0];
-          // Only reset if empty, or if it is still using the old Bodrum coordinates (near 37.0255)
-          if (!firstCp || !firstCp.coord || Math.abs(firstCp.coord[0] - 37.0255) < 0.01 || parsed[c1Index].checkpoints.length === 0) {
-            parsed[c1Index] = defaultCourse;
-            localStorage.setItem('rc_courses', JSON.stringify(parsed));
-          }
-        } else {
-          // Default course-1 is missing completely! Re-create it at the beginning
-          parsed.unshift(defaultCourse);
-          localStorage.setItem('rc_courses', JSON.stringify(parsed));
-        }
+        let parsed = JSON.parse(storedCourses);
+        // Actively filter out the auto-created course-1 or any course named 'Karaada Course'/'Karaada Offshore'
+        parsed = parsed.filter(c => c.id !== 'course-1' && c.name !== 'Karaada Course' && c.name !== 'Karaada Offshore');
+        localStorage.setItem('rc_courses', JSON.stringify(parsed));
         this.db.courses = parsed;
       } catch (e) {
-        this.db.courses = [defaultCourse];
+        this.db.courses = [];
       }
     } else {
-      this.db.courses = [defaultCourse];
-      this._saveToLocalStorage();
+      this.db.courses = [];
     }
     
     this.db.boats.push({
