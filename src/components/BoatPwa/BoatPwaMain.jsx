@@ -11,10 +11,25 @@ import { useFleetSim } from './useFleetSim';
 import ThreeDMap from '../ThreeDMap';
 
 // Dynamic rotated boat icon (top-down view)
-const createRotatedBoatIcon = (heading, color = '#33658A') => {
+const getBrighterColor = (hex) => {
+  if (!hex || !hex.startsWith('#')) return hex;
+  let r = parseInt(hex.slice(1, 3), 16);
+  let g = parseInt(hex.slice(3, 5), 16);
+  let b = parseInt(hex.slice(5, 7), 16);
+  
+  // Blend with white by 45% to make it a slightly brighter/lighter tone
+  r = Math.round(r + (255 - r) * 0.45);
+  g = Math.round(g + (255 - g) * 0.45);
+  b = Math.round(b + (255 - b) * 0.45);
+  
+  return `rgb(${r}, ${g}, ${b})`;
+};
+
+const createRotatedBoatIcon = (heading, color = '#FF5D00') => {
+  const brighterOutline = getBrighterColor(color);
   return new L.DivIcon({
-    html: `<div style="transform: rotate(${heading}deg); width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.3));">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="#fff" stroke-width="2" stroke-linejoin="round" width="30" height="30">
+    html: `<div style="transform: rotate(${heading}deg); width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 0 5px ${color}) drop-shadow(0px 3px 5px rgba(0,0,0,0.3));">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="${brighterOutline}" stroke-width="2.5" stroke-linejoin="round" width="30" height="30">
         <path d="M12 2 L19 21 Q12 18 5 21 Z" />
       </svg>
     </div>`,
@@ -25,9 +40,10 @@ const createRotatedBoatIcon = (heading, color = '#33658A') => {
 };
 
 const createAiBoatIcon = (heading, color) => {
+  const brighterOutline = getBrighterColor(color);
   return new L.DivIcon({
-    html: `<div style="transform: rotate(${heading}deg); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0px 3px 5px rgba(0,0,0,0.35));">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="#fff" stroke-width="2" stroke-linejoin="round" width="24" height="24">
+    html: `<div style="transform: rotate(${heading}deg); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 0 4px ${color}) drop-shadow(0px 3px 5px rgba(0,0,0,0.3));">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="${brighterOutline}" stroke-width="2.5" stroke-linejoin="round" width="24" height="24">
         <path d="M12 2 L19 21 Q12 18 5 21 Z" />
       </svg>
     </div>`,
@@ -195,20 +211,15 @@ function MapControls({ pos, autoCenter, setAutoCenter }) {
   const lastPanTime = useRef(0);
   
   useEffect(() => {
-    if (autoCenter && pos) {
-      // Wait 1.2s before continuous panning to allow the initial flyTo animation to finish
-      if (Date.now() - lastCenterEnableTime.current > 1200) {
-        const center = map.getCenter();
-        const dist = map.distance([pos.lat, pos.lng], center);
-        const now = Date.now();
-        // If the boat has moved more than 350m away from the center, smoothly pan to it
-        if (dist > 350 && now - lastPanTime.current > 6000) {
-          lastPanTime.current = now;
-          map.panTo([pos.lat, pos.lng], { animate: true, duration: 2.5, easeLinearity: 0.15 });
-        }
+    if (autoCenter && pos && pos.lat && pos.lng) {
+      const center = map.getCenter();
+      const dist = map.distance([pos.lat, pos.lng], center);
+      // If boat moves more than 15 meters from current map center, smoothly recenter Map
+      if (dist > 15) {
+        map.panTo([pos.lat, pos.lng], { animate: true, duration: 0.5 });
       }
     }
-  }, [autoCenter, pos.lat, pos.lng, map]);
+  }, [autoCenter, pos?.lat, pos?.lng, map]);
 
   useEffect(() => {
     const disableAuto = () => {
@@ -454,6 +465,62 @@ const normalizeCourse = (courseObj) => {
     ...courseObj,
     checkpoints: enforceCourseOrder(withCoords)
   };
+};
+
+const renderFadingTrail = (points, color, isWake = false, isAi = false) => {
+  const len = points.length;
+  if (len < 2) return null;
+
+  // Make trails longer (render up to 160 points)
+  const maxPoints = 160;
+  const startIdx = Math.max(0, len - maxPoints);
+  const activePoints = points.slice(startIdx);
+  const activeLen = activePoints.length;
+  
+  const segments = [];
+  
+  // Custom base weight for AI boats (thinner than user boat)
+  const baseWeight = isWake 
+    ? (isAi ? 8 : 12) 
+    : (isAi ? 2 : 3);
+    
+  // Custom base opacity for AI boats (highly transparent but visible)
+  const baseOpacity = isWake 
+    ? (isAi ? 0.12 : 0.20) 
+    : (isAi ? 0.35 : 0.55);
+    
+  const lineColor = isWake ? '#cbd5e1' : color;
+
+  for (let i = 0; i < activeLen - 1; i++) {
+    const p1 = activePoints[i];
+    const p2 = activePoints[i + 1];
+    
+    // progress ranges from 0.0 (oldest segment) to 1.0 (newest segment)
+    const progress = i / (activeLen - 2 || 1);
+    
+    // Concave fade curve (progress^0.7) ensures the trail decays gradually
+    // all the way down to exactly 0.0 at the tail, rather than cutting off abruptly.
+    const opacity = baseOpacity * Math.pow(progress, 0.7);
+    
+    // Smooth thickness taper (tapers down to 15% for AI, 20% for user)
+    const minScale = isAi ? 0.15 : 0.2;
+    const sizeMultiplier = progress * (1.0 - minScale) + minScale;
+    const weight = baseWeight * sizeMultiplier;
+    
+    segments.push(
+      <Polyline
+        key={`seg-${isWake ? 'w' : 'c'}-${i}`}
+        positions={[[p1.lat, p1.lng], [p2.lat, p2.lng]]}
+        color={lineColor}
+        weight={weight}
+        opacity={opacity}
+        lineCap="round"
+        lineJoin="round"
+      />
+    );
+  }
+
+  return <React.Fragment>{segments}</React.Fragment>;
 };
 
 export default function BoatPwaMain({ courseOverride, onStatusChange, showDots = true }) {
@@ -1131,9 +1198,12 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           />
           <MapInvalidator />
           <MapControls pos={activePos} autoCenter={autoCenter} setAutoCenter={setAutoCenter} />
-          <Polyline positions={trace.map(p => [p.lat, p.lng])} color="#33658A" weight={3} opacity={0.6} />
+          {/* User boat dual-layer fading trail (wake + core) */}
+          {renderFadingTrail(trace, '#FF5D00', true, false)}
+          {renderFadingTrail(trace, '#FF5D00', false, false)}
+          
           {showDots && trace.map((p, idx) => (
-            <CircleMarker key={`trace-${idx}`} center={[p.lat, p.lng]} radius={3} color="#33658A" fillColor="#33658A" fillOpacity={1} stroke={false} />
+            <CircleMarker key={`trace-${idx}`} center={[p.lat, p.lng]} radius={3} color="#FF5D00" fillColor="#FF5D00" fillOpacity={1} stroke={false} />
           ))}
           
           {syncingQueue.length > 0 && (
@@ -1179,14 +1249,9 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
               
               return (
                 <React.Fragment key={boat.id}>
-                  {trail.length > 1 && (
-                    <Polyline
-                      positions={trail.map(p => [p.lat, p.lng])}
-                      color={boat.color}
-                      weight={2}
-                      opacity={0.45}
-                    />
-                  )}
+                  {/* AI boat dual-layer fading trail (wake + core) */}
+                  {renderFadingTrail(trail, boat.color, true, true)}
+                  {renderFadingTrail(trail, boat.color, false, true)}
                   <Marker
                     position={[boat.lat, boat.lng]}
                     icon={createAiBoatIcon(boat.heading, boat.color)}
@@ -1282,61 +1347,9 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
         </MapContainer>
       )}
 
-      {/* 2D/3D Segmented Control Toggle */}
-      <div
-        style={{
-          position: 'absolute',
-          top: '20px',
-          left: '20px',
-          zIndex: 1000,
-          background: 'rgba(15, 23, 42, 0.85)',
-          backdropFilter: 'blur(8px)',
-          border: '1px solid rgba(255, 255, 255, 0.15)',
-          padding: '4px',
-          borderRadius: '20px',
-          display: 'flex',
-          gap: '2px',
-          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-          pointerEvents: 'auto'
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => setIs3dMode(false)}
-          style={{
-            background: !is3dMode ? '#06b6d4' : 'transparent',
-            color: 'white',
-            border: 'none',
-            padding: '6px 14px',
-            borderRadius: '16px',
-            fontWeight: 'bold',
-            fontSize: '0.82rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            whiteSpace: 'nowrap'
-          }}
-        >
-          2D
-        </button>
-        <button
-          type="button"
-          onClick={() => setIs3dMode(true)}
-          style={{
-            background: is3dMode ? '#06b6d4' : 'transparent',
-            color: 'white',
-            border: 'none',
-            padding: '6px 14px',
-            borderRadius: '16px',
-            fontWeight: 'bold',
-            fontSize: '0.82rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            whiteSpace: 'nowrap'
-          }}
-        >
-          3D
-        </button>
-      </div>
+
+
+
 
       <div style={{ position: 'absolute', bottom: 'max(15px, env(safe-area-inset-bottom))', left: '50%', transform: 'translateX(-50%)', width: '90%', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 999 }}>
         <div className="simulator-panel" style={{ padding: '0 8px', background: 'transparent', boxShadow: 'none', border: 'none', position: 'relative', bottom: 'auto', right: 'auto', width: '100%', display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -2,19 +2,46 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import * as turf from '@turf/turf';
 import { AI_FLEET } from './fleetConfig';
 
+const getCheckpointKind = (checkpoint) => {
+  if (!checkpoint) return '';
+  if (checkpoint.kind) return checkpoint.kind;
+  if (checkpoint.id === 'S' || checkpoint.id === 'start') return 'start';
+  if (checkpoint.id === 'F' || checkpoint.id === 'finish') return 'finish';
+  return checkpoint.type;
+};
+
 const isRaceTarget = (cp) => {
-  const k = cp.kind || cp.type;
+  const k = getCheckpointKind(cp);
   return k === 'start' || k === 'finish' || k === 'gate' || k === 'buoy';
 };
 
-const getCheckpointKind = (cp) => cp.kind || cp.type;
+function getCheckpointCoords(cp) {
+  if (!cp) return null;
+  if (cp.coords && cp.coords.length >= 2) return cp.coords;
+  if (cp.coord) {
+    const center = turf.point([cp.coord[1], cp.coord[0]]);
+    const width = cp.width || 120;
+    const rotation = cp.rotationDeg !== undefined ? cp.rotationDeg : 270;
+    const angleA = (rotation + 90) % 360;
+    const angleB = (rotation - 90 + 360) % 360;
+    const halfDistKm = (width / 2) / 1000;
+    const ptA = turf.destination(center, halfDistKm, angleA, { units: 'kilometers' });
+    const ptB = turf.destination(center, halfDistKm, angleB, { units: 'kilometers' });
+    return [
+      [ptA.geometry.coordinates[1], ptA.geometry.coordinates[0]],
+      [ptB.geometry.coordinates[1], ptB.geometry.coordinates[0]]
+    ];
+  }
+  return null;
+}
 
 function getCheckpointCenter(cp) {
   if (!cp) return null;
   if (cp.coord) return { lat: cp.coord[0], lng: cp.coord[1] };
-  if (cp.coords && cp.coords.length > 0) {
-    const lats = cp.coords.map(c => c[0]);
-    const lngs = cp.coords.map(c => c[1]);
+  const coords = getCheckpointCoords(cp);
+  if (coords && coords.length > 0) {
+    const lats = coords.map(c => c[0]);
+    const lngs = coords.map(c => c[1]);
     return {
       lat: lats.reduce((a, b) => a + b, 0) / lats.length,
       lng: lngs.reduce((a, b) => a + b, 0) / lngs.length
@@ -24,21 +51,39 @@ function getCheckpointCenter(cp) {
 }
 
 function getLineBearing(cp) {
+  if (!cp) return 0;
   if (cp.crossing === 'center') return (cp.rotationDeg || 0);
-  const ptA = turf.point([cp.coords[0][1], cp.coords[0][0]]);
-  const ptB = turf.point([cp.coords[1][1], cp.coords[1][0]]);
+  const coords = getCheckpointCoords(cp);
+  if (!coords || coords.length < 2) return cp.rotationDeg || 0;
+  const ptA = turf.point([coords[0][1], coords[0][0]]);
+  const ptB = turf.point([coords[1][1], coords[1][0]]);
   const lb = turf.bearing(ptA, ptB);
   return (lb + (cp.crossing === 'up' ? -90 : 90) + 360) % 360;
 }
 
 /** Spawn positions: staggered side-by-side behind the start line */
 function buildSpawnPositions(course) {
+  if (!course || !course.checkpoints) {
+    return AI_FLEET.map((_, i) => ({ lat: 37.0255 + i * 0.001, lng: 27.4325, heading: 180 }));
+  }
   const targets = course.checkpoints.filter(isRaceTarget);
-  const startCp = targets.find(cp => cp.kind === 'start');
+  const startCp = targets.find(cp => getCheckpointKind(cp) === 'start');
   if (!startCp) return AI_FLEET.map((_, i) => ({ lat: 37.0255 + i * 0.001, lng: 27.4325, heading: 180 }));
 
-  const sLat = (startCp.coords[0][0] + startCp.coords[1][0]) / 2;
-  const sLng = (startCp.coords[0][1] + startCp.coords[1][1]) / 2;
+  const coords = getCheckpointCoords(startCp);
+  if (!coords || coords.length < 2) {
+    if (startCp.coord) {
+      return AI_FLEET.map((_, i) => ({
+        lat: startCp.coord[0] + (i - 4) * 0.0001,
+        lng: startCp.coord[1] + (i - 4) * 0.0001,
+        heading: startCp.rotationDeg || 0
+      }));
+    }
+    return AI_FLEET.map((_, i) => ({ lat: 37.0255 + i * 0.001, lng: 27.4325, heading: 180 }));
+  }
+
+  const sLat = (coords[0][0] + coords[1][0]) / 2;
+  const sLng = (coords[0][1] + coords[1][1]) / 2;
   const startPt = turf.point([sLng, sLat]);
 
   const arrowBearing = getLineBearing(startCp);
@@ -74,6 +119,7 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
   const minDistanceRef = useRef({}); // { boatId -> minDistance }
   const closestSideRef = useRef({});  // { boatId -> closestSide }
   const hasPassedEntranceRef = useRef({}); // { boatId -> hasPassedEntrance }
+  const lastLoggedTrailRef = useRef({}); // { boatId -> {lat,lng,hdg,time} }
 
   // Initialise boats when course becomes available
   useEffect(() => {
@@ -93,6 +139,7 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
     minDistanceRef.current = Object.fromEntries(AI_FLEET.map(b => [b.id, Infinity]));
     closestSideRef.current = Object.fromEntries(AI_FLEET.map(b => [b.id, null]));
     hasPassedEntranceRef.current = Object.fromEntries(AI_FLEET.map(b => [b.id, false]));
+    lastLoggedTrailRef.current = {};
     setBoats(initial);
     setTrails(Object.fromEntries(AI_FLEET.map(b => [b.id, []])));
   }, [course, isSimMode]);
@@ -117,16 +164,23 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
         if (kind === 'buoy') {
           tLat = target.coord[0]; tLng = target.coord[1];
         } else {
-          const ptA = turf.point([target.coords[0][1], target.coords[0][0]]);
-          const ptB = turf.point([target.coords[1][1], target.coords[1][0]]);
-          const lineLengthKm = turf.distance(ptA, ptB, { units: 'kilometers' });
-          const fraction = 0.25 + 0.5 * (Math.max(boatIdx, 0) / Math.max(AI_FLEET.length - 1, 1));
-          const targetPtOnLine = turf.along(turf.lineString([
-            [target.coords[0][1], target.coords[0][0]],
-            [target.coords[1][1], target.coords[1][0]]
-          ]), lineLengthKm * fraction, { units: 'kilometers' });
-          tLat = targetPtOnLine.geometry.coordinates[1];
-          tLng = targetPtOnLine.geometry.coordinates[0];
+          const coords = getCheckpointCoords(target);
+          if (coords && coords.length >= 2) {
+            const ptA = turf.point([coords[0][1], coords[0][0]]);
+            const ptB = turf.point([coords[1][1], coords[1][0]]);
+            const lineLengthKm = turf.distance(ptA, ptB, { units: 'kilometers' });
+            const fraction = 0.25 + 0.5 * (Math.max(boatIdx, 0) / Math.max(AI_FLEET.length - 1, 1));
+            const targetPtOnLine = turf.along(turf.lineString([
+              [coords[0][1], coords[0][0]],
+              [coords[1][1], coords[1][0]]
+            ]), lineLengthKm * fraction, { units: 'kilometers' });
+            tLat = targetPtOnLine.geometry.coordinates[1];
+            tLng = targetPtOnLine.geometry.coordinates[0];
+          } else {
+            const center = getCheckpointCenter(target) || { lat: 37.0255, lng: 27.4325 };
+            tLat = center.lat;
+            tLng = center.lng;
+          }
         }
         const tPt = turf.point([tLng, tLat]);
 
@@ -221,7 +275,8 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
     }, 100);
 
     const moveInterval = setInterval(() => {
-      const newTrailPoints = {};
+      const newTrailPointsToLog = {};
+      const nowTime = Date.now();
       boatsRef.current = boatsRef.current.map(boat => {
         const boatIdx = AI_FLEET.findIndex(b => b.id === boat.id);
         // Turn
@@ -243,7 +298,24 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
         const newLat = boat.lat + (dist / 111111) * Math.cos(hdgRad);
         const newLng = boat.lng + (dist / (111111 * Math.cos(boat.lat * Math.PI / 180))) * Math.sin(hdgRad);
 
-        newTrailPoints[boat.id] = { lat: newLat, lng: newLng };
+        // Smart Trail Logger (only log if moved > 5m, turned > 3deg, or > 1.5s passed)
+        const lastLog = lastLoggedTrailRef.current[boat.id];
+        let shouldLog = false;
+        if (!lastLog) {
+          shouldLog = true;
+        } else {
+          const distKm = turf.distance(turf.point([lastLog.lng, lastLog.lat]), turf.point([newLng, newLat]), { units: 'kilometers' });
+          let hdgDiff = Math.abs(hdg - lastLog.hdg);
+          if (hdgDiff > 180) hdgDiff = 360 - hdgDiff;
+          if (distKm > 0.005 || hdgDiff > 3 || (nowTime - lastLog.time) > 1500) {
+            shouldLog = true;
+          }
+        }
+        
+        if (shouldLog) {
+          lastLoggedTrailRef.current[boat.id] = { lat: newLat, lng: newLng, hdg: hdg, time: nowTime };
+          newTrailPointsToLog[boat.id] = { lat: newLat, lng: newLng };
+        }
 
         // Check line crossing / buoy CPA for target advancement
         const tIdx = targetIndexRef.current[boat.id] ?? 0;
@@ -255,15 +327,18 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
 
           if (kind !== 'buoy' && lastPos && (lastPos.lat !== newLat || lastPos.lng !== newLng)) {
             try {
-              const boatPath = turf.lineString([[lastPos.lng, lastPos.lat], [newLng, newLat]]);
-              const targetLine = turf.lineString([
-                [target.coords[0][1], target.coords[0][0]],
-                [target.coords[1][1], target.coords[1][0]],
-              ]);
-              const intersects = turf.lineIntersect(boatPath, targetLine);
-              if (intersects.features.length > 0) {
-                console.log(`Boat ${boat.id} crossed line ${target.id}!`);
-                targetIndexRef.current[boat.id] = tIdx + 1;
+              const coords = getCheckpointCoords(target);
+              if (coords && coords.length >= 2) {
+                const boatPath = turf.lineString([[lastPos.lng, lastPos.lat], [newLng, newLat]]);
+                const targetLine = turf.lineString([
+                  [coords[0][1], coords[0][0]],
+                  [coords[1][1], coords[1][0]],
+                ]);
+                const intersects = turf.lineIntersect(boatPath, targetLine);
+                if (intersects.features.length > 0) {
+                  console.log(`Boat ${boat.id} crossed line ${target.id}!`);
+                  targetIndexRef.current[boat.id] = tIdx + 1;
+                }
               }
             } catch (e) {
               console.error(`Error in crossing check for boat ${boat.id}:`, e);
@@ -272,83 +347,14 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
             const bPt = turf.point([newLng, newLat]);
             const tPt = turf.point([target.coord[1], target.coord[0]]);
             const distance = turf.distance(bPt, tPt, { units: 'kilometers' });
-
-            const absoluteBearing = turf.bearing(bPt, tPt);
-            let relativeBearing = absoluteBearing - hdg;
-            while (relativeBearing <= -180) relativeBearing += 360;
-            while (relativeBearing > 180) relativeBearing -= 360;
-
-            const minD = minDistanceRef.current[boat.id] ?? Infinity;
-            if (distance < minD) {
-              minDistanceRef.current[boat.id] = distance;
-              closestSideRef.current[boat.id] = relativeBearing < 0 ? 'port' : 'starboard';
-            }
-
-            // Find reference coordinates
-            const prevTarget = targets2[tIdx - 1];
-            const nextTarget = targets2[tIdx + 1];
             
-            let prevCoord = prevTarget ? prevTarget.coord : null;
-            if (!prevCoord && prevTarget && prevTarget.coords) {
-              prevCoord = [
-                (prevTarget.coords[0][0] + prevTarget.coords[1][0]) / 2,
-                (prevTarget.coords[0][1] + prevTarget.coords[1][1]) / 2
-              ];
-            }
-            if (!prevCoord) {
-              const spawns = buildSpawnPositions(course);
-              prevCoord = spawns[boatIdx] ? [spawns[boatIdx].lat, spawns[boatIdx].lng] : [newLat, newLng];
-            }
-
-            let nextCoord = nextTarget ? nextTarget.coord : null;
-            if (!nextCoord && nextTarget && nextTarget.coords) {
-              nextCoord = [
-                (nextTarget.coords[0][0] + nextTarget.coords[1][0]) / 2,
-                (nextTarget.coords[0][1] + nextTarget.coords[1][1]) / 2
-              ];
-            }
-            if (!nextCoord) {
-              nextCoord = [target.coord[0], target.coord[1]]; // fallback
-            }
-
-            const vX = target.coord[1] - prevCoord[1];
-            const vY = target.coord[0] - prevCoord[0];
-            const uX = nextCoord[1] - target.coord[1];
-            const uY = nextCoord[0] - target.coord[0];
-            const wX = newLng - target.coord[1];
-            const wY = newLat - target.coord[0];
-
-            const dotIn = vX * wX + vY * wY;
-            const dotOut = uX * wX + uY * wY;
-
-            // Check entrance
-            const maxRoundingDist = 0.040 + boatIdx * 0.007 + 0.035; // offsetDistance + 35m tolerance
-            if (!hasPassedEntranceRef.current[boat.id]) {
-              const entrancePassed = dotIn > 0 && distance < maxRoundingDist;
-              const isSharpTurn = (vX * uX + vY * uY) < 0;
-              const isFarSideCorrect = !isSharpTurn || (dotOut < 0);
-
-              if (entrancePassed && isFarSideCorrect) {
-                const crossIn = vX * wY - vY * wX;
-                const rounding = (target.rounding || 'port').toLowerCase();
-                const sideCorrect = rounding === 'port' ? (crossIn < 0) : (crossIn > 0);
-                if (sideCorrect) {
-                  hasPassedEntranceRef.current[boat.id] = true;
-                }
-              }
-            }
-
-            // Check exit / completion
-            if (hasPassedEntranceRef.current[boat.id] && dotOut > 0) {
+            // Robust proximity check for AI simulated boats (offset lane distance + 150m leeway)
+            const maxRoundingDist = 0.040 + boatIdx * 0.007 + 0.150; 
+            if (distance < maxRoundingDist) {
               targetIndexRef.current[boat.id] = tIdx + 1;
               minDistanceRef.current[boat.id] = Infinity;
               closestSideRef.current[boat.id] = null;
               hasPassedEntranceRef.current[boat.id] = false;
-            } else if (distance > minDistanceRef.current[boat.id] + 0.1 && minDistanceRef.current[boat.id] < maxRoundingDist + 0.1 && !hasPassedEntranceRef.current[boat.id]) {
-              // If we passed the buoy (distance is increasing) but failed entrance check (wrong side),
-              // reset minDistance so we can circle back and try again
-              minDistanceRef.current[boat.id] = Infinity;
-              closestSideRef.current[boat.id] = null;
             }
           }
         }
@@ -358,15 +364,18 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
       });
 
       setBoats([...boatsRef.current]);
-      setTrails(prev => {
-        const next = { ...prev };
-        Object.entries(newTrailPoints).forEach(([id, pt]) => {
-          const trail = next[id] || [];
-          // Keep last 300 trail points per boat
-          next[id] = [...trail.slice(-299), pt];
+      
+      if (Object.keys(newTrailPointsToLog).length > 0) {
+        setTrails(prev => {
+          const next = { ...prev };
+          Object.entries(newTrailPointsToLog).forEach(([id, pt]) => {
+            const trail = next[id] || [];
+            // Keep last 300 trail points per boat (approx 5 to 10 mins of sailing)
+            next[id] = [...trail.slice(-299), pt];
+          });
+          return next;
         });
-        return next;
-      });
+      }
     }, 50);
 
     return () => {
@@ -392,6 +401,7 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
     minDistanceRef.current = Object.fromEntries(AI_FLEET.map(b => [b.id, Infinity]));
     closestSideRef.current = Object.fromEntries(AI_FLEET.map(b => [b.id, null]));
     hasPassedEntranceRef.current = Object.fromEntries(AI_FLEET.map(b => [b.id, false]));
+    lastLoggedTrailRef.current = {};
     setBoats(reset);
     setTrails(Object.fromEntries(AI_FLEET.map(b => [b.id, []])));
   }, [course]);

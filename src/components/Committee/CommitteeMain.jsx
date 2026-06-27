@@ -1111,60 +1111,7 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
 
   return (
     <div className="rc-map-full" ref={containerRef}>
-      {/* 2D/3D Segmented Control Toggle */}
-      <div
-        style={{
-          position: 'absolute',
-          top: '20px',
-          right: '80px',
-          zIndex: 1000,
-          background: 'rgba(15, 23, 42, 0.9)',
-          backdropFilter: 'blur(8px)',
-          border: '1px solid rgba(255, 255, 255, 0.15)',
-          padding: '4px',
-          borderRadius: '20px',
-          display: 'flex',
-          gap: '2px',
-          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)'
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => setIs3dMode(false)}
-          style={{
-            background: !is3dMode ? '#06b6d4' : 'transparent',
-            color: 'white',
-            border: 'none',
-            padding: '6px 14px',
-            borderRadius: '16px',
-            fontWeight: 'bold',
-            fontSize: '0.82rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            whiteSpace: 'nowrap'
-          }}
-        >
-          2D
-        </button>
-        <button
-          type="button"
-          onClick={() => setIs3dMode(true)}
-          style={{
-            background: is3dMode ? '#06b6d4' : 'transparent',
-            color: 'white',
-            border: 'none',
-            padding: '6px 14px',
-            borderRadius: '16px',
-            fontWeight: 'bold',
-            fontSize: '0.82rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            whiteSpace: 'nowrap'
-          }}
-        >
-          3D
-        </button>
-      </div>
+
 
       {is3dMode ? (
         <ThreeDMap

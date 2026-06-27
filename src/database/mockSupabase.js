@@ -16,7 +16,7 @@ class MockSupabase {
       checkpoints: [
         { id: 'start', type: 'start', coord: [37.020, 27.430], width: 300, rotationDeg: 60, crossing: 'center' },
         { id: 'buoy-1', type: 'buoy', coord: [37.008, 27.415], rounding: 'port' },
-        { id: 'buoy-2', type: 'buoy', coord: [37.012, 27.442], rounding: 'starboard' },
+        { id: 'buoy-2', type: 'buoy', coord: [37.012, 27.442], rounding: 'port' },
         { id: 'finish', type: 'finish', coord: [37.018, 27.424], width: 300, rotationDeg: 60, crossing: 'center' }
       ]
     };
@@ -31,7 +31,8 @@ class MockSupabase {
           const demoCourse = coursesList[demoIdx];
           const startCp = demoCourse.checkpoints?.find(cp => cp.id === 'start');
           const finishCp = demoCourse.checkpoints?.find(cp => cp.id === 'finish');
-          if (!startCp || startCp.width !== 300 || startCp.rotationDeg !== 60 || !finishCp || finishCp.coord[0] === 37.020 || finishCp.coord[0] === 37.024) {
+          const buoy2Cp = demoCourse.checkpoints?.find(cp => cp.id === 'buoy-2');
+          if (!startCp || startCp.width !== 300 || startCp.rotationDeg !== 60 || !finishCp || finishCp.coord[0] === 37.020 || finishCp.coord[0] === 37.024 || !buoy2Cp || buoy2Cp.rounding !== 'port') {
             coursesList[demoIdx] = defaultCourse;
             localStorage.setItem('rc_courses', JSON.stringify(coursesList));
           }
