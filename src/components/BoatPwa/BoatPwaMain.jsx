@@ -1200,6 +1200,8 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           targetName={targetName}
           center={[activePos?.lat || 37.015, activePos?.lng || 27.420]}
           zoom={15.5}
+          offlineQueue={offlineQueue}
+          syncingQueue={syncingQueue}
         />
       ) : (
         <MapContainer center={[37.015, 27.420]} zoom={15.5} zoomSnap={0.1} maxZoom={22} zoomControl={false} attributionControl={false} preferCanvas={true} style={{ width: '100%', height: '100%', background: '#0b0f19' }}>

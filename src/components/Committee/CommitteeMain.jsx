@@ -35,6 +35,30 @@ import CourseBottomSheet from './CourseBottomSheet';
 import ThreeDMap from '../ThreeDMap';
 import { useGpsTracker } from '../../hooks/useGpsTracker';
 
+const proposedPointIcon = L.divIcon({
+  html: `<div style="
+    width: 14px; 
+    height: 14px; 
+    border-radius: 50%; 
+    background-color: #d946ef; 
+    border: 2.5px solid #ffffff; 
+    box-shadow: 0 2px 6px rgba(0,0,0,0.45);
+  "></div>`,
+  className: 'proposed-point-icon-shell',
+  iconSize: [14, 14],
+  iconAnchor: [7, 7]
+});
+
+function ProposedCourseEvents({ enabled, onRightClick }) {
+  useMapEvents({
+    contextmenu(e) {
+      if (!enabled) return;
+      onRightClick(e.latlng.lat, e.latlng.lng);
+    }
+  });
+  return null;
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const withLineCheckpoint = (checkpoint, kind, id) => ({
@@ -608,6 +632,45 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
   // UI state
   const [showCourseLines, setShowCourseLines] = useState(false);
   const [bottomSheetExpanded, setBottomSheetExpanded] = useState(false);
+  const [isDrawingProposed, setIsDrawingProposed] = useState(false);
+  const [proposedPoints, setProposedPoints] = useState([]);
+
+  const smoothedProposedCoords = useMemo(() => {
+    if (proposedPoints.length < 3) return proposedPoints;
+    
+    // Chaikin's Corner-Cutting algorithm for beautiful, overshoot-free curves
+    let current = [...proposedPoints];
+    const iterations = 3;
+
+    for (let iter = 0; iter < iterations; iter++) {
+      const next = [];
+      next.push(current[0]); // keep start point
+
+      for (let i = 0; i < current.length - 1; i++) {
+        const p0 = current[i];
+        const p1 = current[i + 1];
+
+        // 1/4 point: 0.75 * p0 + 0.25 * p1
+        const q = [
+          0.75 * p0[0] + 0.25 * p1[0],
+          0.75 * p0[1] + 0.25 * p1[1]
+        ];
+
+        // 3/4 point: 0.25 * p0 + 0.75 * p1
+        const r = [
+          0.25 * p0[0] + 0.75 * p1[0],
+          0.25 * p0[1] + 0.75 * p1[1]
+        ];
+
+        next.push(q, r);
+      }
+
+      next.push(current[current.length - 1]); // keep end point
+      current = next;
+    }
+
+    return current;
+  }, [proposedPoints]);
 
   // Save / Open modal state
   const [isOpenModalVisible, setIsOpenModalVisible] = useState(false);
@@ -1151,8 +1214,40 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
             onClear={() => { setPopupX(null); setPopupY(null); }}
           />
 
-          {/* Course connecting polyline */}
+           {/* Course connecting polyline */}
           {showCourseLines && <CourseConnectingLine checkpoints={draftCheckpoints} />}
+
+          {/* Proposed Course events listener, line, and draggable handles */}
+          <ProposedCourseEvents
+            enabled={isDrawingProposed}
+            onRightClick={(lat, lng) => setProposedPoints(prev => [...prev, [lat, lng]])}
+          />
+          {proposedPoints.length >= 2 && (
+            <Polyline
+              positions={smoothedProposedCoords}
+              color="#d946ef"
+              weight={4.5}
+              opacity={0.85}
+            />
+          )}
+          {isDrawingProposed && proposedPoints.map((pt, idx) => (
+            <Marker
+              key={`proposed-pt-${idx}`}
+              position={pt}
+              draggable={true}
+              icon={proposedPointIcon}
+              eventHandlers={{
+                drag(e) {
+                  const { lat, lng } = e.target.getLatLng();
+                  setProposedPoints(prev => {
+                    const next = [...prev];
+                    next[idx] = [lat, lng];
+                    return next;
+                  });
+                }
+              }}
+            />
+          ))}
 
           {/* Course elements */}
           {draftCheckpoints.map((checkpoint) => {
@@ -1412,15 +1507,30 @@ export default function CommitteeMain({ courseDraft, onCourseChange, onStatusCha
           <CircleDot size={20} color="#F26419" />
         </button>
 
-        {/* Course connecting line toggle */}
+        {/* Proposed course drawing overlay */}
         <button
           type="button"
-          className={`rc-course-line-btn${showCourseLines ? ' active' : ''}`}
-          title="Toggle course route line"
-          onClick={() => setShowCourseLines((v) => !v)}
+          className={`rc-course-line-btn${isDrawingProposed ? ' active' : ''}`}
+          title="Toggle overlay drawing of proposed course. Right-click map to add points, drag to move."
+          onClick={() => setIsDrawingProposed((v) => !v)}
+          style={{
+            borderColor: isDrawingProposed ? '#d946ef' : undefined,
+            color: isDrawingProposed ? '#d946ef' : undefined
+          }}
         >
           <Route size={20} />
         </button>
+
+        {proposedPoints.length > 0 && (
+          <button
+            type="button"
+            className="rc-course-line-btn"
+            title="Clear Proposed Course"
+            onClick={() => setProposedPoints([])}
+          >
+            <X size={20} color="#EF4444" />
+          </button>
+        )}
 
         {/* Save Course */}
         <button

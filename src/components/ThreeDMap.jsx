@@ -36,17 +36,24 @@ function getCheckpointMapCenter(cp) {
   return null;
 }
 
+function getDynamicPadding(map, top, right, bottom, left) {
+  const container = map.getContainer();
+  const h = container.clientHeight || 600;
+  const w = container.clientWidth || 800;
+  return {
+    top: Math.min(h * 0.15, top),
+    right: Math.min(w * 0.15, right),
+    bottom: Math.min(h * 0.40, bottom),
+    left: Math.min(w * 0.15, left)
+  };
+}
+
 function getBoundsCamera(map, coords, bearing, fallbackZoom = 16, options = {}) {
   const validCoords = (coords || [])
     .filter(coord => Array.isArray(coord) && Number.isFinite(coord[0]) && Number.isFinite(coord[1]));
   const pitch = options.pitch ?? CAMERA_PITCH;
   const maxZoom = options.maxZoom ?? CAMERA_MAX_ZOOM;
-  const padding = options.padding || {
-    top: 92,
-    right: 84,
-    bottom: 230,
-    left: 84
-  };
+  const padding = options.padding || getDynamicPadding(map, 30, 30, 70, 30);
 
   if (validCoords.length === 0) return null;
   if (validCoords.length === 1) {
@@ -85,13 +92,8 @@ function getBoundsCamera(map, coords, bearing, fallbackZoom = 16, options = {}) 
 function getFleetCamera(map, coords, bearing) {
   return getBoundsCamera(map, coords, bearing, 15.7, {
     pitch: CAMERA_PITCH,
-    maxZoom: Math.min(CAMERA_MAX_ZOOM, 17.4),
-    padding: {
-      top: 110,
-      right: 120,
-      bottom: 310,
-      left: 120
-    }
+    maxZoom: Math.min(CAMERA_MAX_ZOOM, 18.0),
+    padding: getDynamicPadding(map, 36, 40, 90, 40)
   });
 }
 
@@ -106,7 +108,8 @@ function getChaseCamera(boat, baseZoom, targetPos, targetName) {
       boat.lat * 0.36 + lookAhead[1] * 0.64
     ],
     zoom: getFollowCameraZoom(baseZoom, boat, targetPos, targetName),
-    bearing: heading
+    bearing: heading,
+    pitch: 76
   };
 }
 
@@ -208,6 +211,27 @@ function normalizeTrailPoints(points, maxPoints = 120) {
     .map(p => ({ lat: p.lat, lng: p.lng }));
 }
 
+function makeUserPointsGeoJson(points) {
+  if (!points || points.length === 0) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+
+  const features = points.map((p) => {
+    return {
+      type: 'Feature',
+      properties: {
+        opacity: 1.0
+      },
+      geometry: {
+        type: 'Point',
+        coordinates: [p.lng, p.lat]
+      }
+    };
+  });
+
+  return { type: 'FeatureCollection', features };
+}
+
 function seedRenderedTrail(trailRef, id, points, maxPoints = 120) {
   const normalized = normalizeTrailPoints(points, maxPoints);
   if (normalized.length < 2) return;
@@ -290,9 +314,9 @@ function createBoatImage(color) {
 }
 
 const SATELLITE_MAX_NATIVE_ZOOM = 17;
-const CAMERA_PITCH = 20;
-const LOW_CAMERA_PITCH = 12;
-const CAMERA_CLOSE_ZOOM_BOOST = 1.65;
+const CAMERA_PITCH = 70;
+const LOW_CAMERA_PITCH = 64;
+const CAMERA_CLOSE_ZOOM_BOOST = 3.95;
 const CAMERA_MAX_ZOOM = 18.15;
 
 const maplibreStyle = {
@@ -351,27 +375,31 @@ export default function ThreeDMap({
   targetPos = null,
   targetName = '',
   center = [36.9758, 27.4601],
-  zoom = 15.5
+  zoom = 15.5,
+  offlineQueue = [],
+  syncingQueue = []
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
+  const hasCenteredRef = useRef(false);
   const markersRef = useRef({}); // Store active HTML markers (buoys, endpoints, midpoints, boats)
   const lastCameraMoveRef = useRef(0);
   const lastGeoJsonUpdateRef = useRef(0);
   const geoJsonTimeoutRef = useRef(null);
   const programmaticCameraMoveRef = useRef(false);
   const [activePreset, setActivePreset] = useState('target');
-  const [showCameraLabel, setShowCameraLabel] = useState(true);
   const activePresetRef = useRef('target');
+  const lastAutoPresetRef = useRef('target');
+  const overrideTimeoutRef = useRef(null);
 
+
+ 
   useEffect(() => {
     activePresetRef.current = activePreset;
-  }, [activePreset]);
-
-  useEffect(() => {
-    setShowCameraLabel(true);
-    const timer = window.setTimeout(() => setShowCameraLabel(false), 1400);
-    return () => window.clearTimeout(timer);
+    hasCenteredRef.current = false;
+    if (activePreset !== 'manual') {
+      lastAutoPresetRef.current = activePreset;
+    }
   }, [activePreset]);
 
   const autoRotateAngleRef = useRef(0);
@@ -400,6 +428,7 @@ export default function ThreeDMap({
 
   useEffect(() => {
     checkpointsRef.current = checkpoints;
+    hasCenteredRef.current = false;
   }, [checkpoints]);
 
   useEffect(() => {
@@ -445,19 +474,7 @@ export default function ThreeDMap({
             animatedBoatsRef.current[id] = anim;
             userAnim = anim;
 
-            // Real-time 60 FPS User Trail updates matching the smooth boat coordinates
-            const userSource = map.getSource('trail-source-user');
-            if (userSource) {
-              const visualTrail = appendRenderedTrailPoint(
-                renderedTrailPointsRef,
-                renderedTrailLastAppendRef,
-                'user',
-                anim.lng,
-                anim.lat,
-                190
-              );
-              userSource.setData(makeTrailData(visualTrail));
-            }
+             // Real-time 60 FPS User Trail updates are no longer generated dynamically; we only show official saved/recorded points.
 
             boatFeatures.push({
               type: 'Feature',
@@ -570,7 +587,7 @@ export default function ThreeDMap({
                 {
                   pitch: LOW_CAMERA_PITCH,
                   maxZoom: CAMERA_MAX_ZOOM,
-                  padding: { top: 54, right: 70, bottom: 250, left: 70 }
+                  padding: getDynamicPadding(map, 16, 20, 60, 20)
                 }
               );
             } else if (activePresetId === 'last-target') {
@@ -591,7 +608,7 @@ export default function ThreeDMap({
                   {
                     pitch: LOW_CAMERA_PITCH,
                     maxZoom: CAMERA_MAX_ZOOM,
-                    padding: { top: 54, right: 70, bottom: 250, left: 70 }
+                    padding: getDynamicPadding(map, 16, 20, 60, 20)
                   }
                 );
               }
@@ -603,7 +620,17 @@ export default function ThreeDMap({
 
             if (camera) {
               programmaticCameraMoveRef.current = true;
-              moveCameraToward(map, camera);
+              if (!hasCenteredRef.current) {
+                map.jumpTo({
+                  center: camera.center,
+                  zoom: camera.zoom,
+                  bearing: camera.bearing,
+                  pitch: camera.pitch ?? CAMERA_PITCH
+                });
+                hasCenteredRef.current = true;
+              } else {
+                moveCameraToward(map, camera);
+              }
               window.setTimeout(() => {
                 programmaticCameraMoveRef.current = false;
               }, 0);
@@ -640,7 +667,7 @@ export default function ThreeDMap({
       center: mapCenter,
       zoom: Math.min(zoom + CAMERA_CLOSE_ZOOM_BOOST, CAMERA_MAX_ZOOM),
       pitch: CAMERA_PITCH,
-      maxPitch: 70,
+      maxPitch: 80,
       maxZoom: CAMERA_MAX_ZOOM,
       bearing: -15,
       antialias: true,
@@ -811,14 +838,29 @@ export default function ThreeDMap({
         data: { type: 'FeatureCollection', features: [] }
       });
 
-      // Thicker gate/lines to match the 2D version visual hierarchy
+      // Dual-layer gate/lines (border + fill) to match the 2D Leaflet pill style
+      map.addLayer({
+        id: 'checkpoint-gates-border-layer',
+        type: 'line',
+        source: 'checkpoint-gates',
+        paint: {
+          'line-color': ['get', 'borderColor'],
+          'line-width': 14,
+          'line-opacity': ['get', 'opacity']
+        },
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round'
+        }
+      });
+
       map.addLayer({
         id: 'checkpoint-gates-layer',
         type: 'line',
         source: 'checkpoint-gates',
         paint: {
-          'line-color': ['get', 'color'],
-          'line-width': 12,
+          'line-color': ['get', 'fillColor'],
+          'line-width': 8,
           'line-opacity': ['get', 'opacity']
         },
         layout: {
@@ -874,9 +916,22 @@ export default function ThreeDMap({
       visualizePitch: true
     }));
 
-    const clearPreset = () => {
-      if (programmaticCameraMoveRef.current) return;
-      setActivePreset('manual');
+    const clearPreset = (e) => {
+      if (e && e.originalEvent) {
+        if (activePresetRef.current !== 'manual') {
+          lastAutoPresetRef.current = activePresetRef.current;
+        }
+        setActivePreset('manual');
+
+        if (overrideTimeoutRef.current) {
+          clearTimeout(overrideTimeoutRef.current);
+        }
+        overrideTimeoutRef.current = setTimeout(() => {
+          if (activePresetRef.current === 'manual' && lastAutoPresetRef.current && lastAutoPresetRef.current !== 'manual') {
+            setActivePreset(lastAutoPresetRef.current);
+          }
+        }, 6000); // 6s of inactivity reverts camera tracking back
+      }
     };
     map.on('dragstart', clearPreset);
     map.on('zoomstart', clearPreset);
@@ -884,6 +939,9 @@ export default function ThreeDMap({
     map.on('rotatestart', clearPreset);
 
     return () => {
+      if (overrideTimeoutRef.current) {
+        clearTimeout(overrideTimeoutRef.current);
+      }
       Object.values(markersRef.current).forEach(m => m.remove());
       markersRef.current = {};
       map.off('dragstart', clearPreset);
@@ -931,13 +989,16 @@ export default function ThreeDMap({
         .filter(cp => cp.kind !== 'buoy' && cp.coords)
         .map(cp => {
           const isTarget = cp.id?.toUpperCase() === activeTargetName;
-          const color = cp.kind === 'start' ? '#22c55e'
+          const fillColor = cp.kind === 'start' ? '#22c55e'
             : cp.kind === 'finish' ? '#ef4444' : '#f5cb5c';
+          const borderColor = cp.kind === 'start' ? '#166534'
+            : cp.kind === 'finish' ? '#991b1b' : '#b7791f';
 
           return {
             type: 'Feature',
             properties: {
-              color,
+              fillColor,
+              borderColor,
               opacity: isTarget ? 0.95 : 0.16
             },
             geometry: {
@@ -956,7 +1017,7 @@ export default function ThreeDMap({
       });
     };
 
-    if (map.loaded()) {
+    if (isMapLoadedRef.current) {
       updateStaticLayers();
     } else {
       map.on('load', updateStaticLayers);
@@ -977,39 +1038,183 @@ export default function ThreeDMap({
         const wakeLayerId = `trail-layer-${id}-wake`;
         const coreLayerId = `trail-layer-${id}-core`;
 
-        if (!map.getSource(sourceId)) {
-          map.addSource(sourceId, {
-            type: 'geojson',
-            lineMetrics: true, // required for line-gradient
-            data: { type: 'FeatureCollection', features: [] }
-          });
+        if (id === 'user') {
+          // Explicitly remove stale wake/core layers from previous versions/mounts
+          if (map.getLayer('trail-layer-user-wake')) map.removeLayer('trail-layer-user-wake');
+          if (map.getLayer('trail-layer-user-core')) map.removeLayer('trail-layer-user-core');
 
-          const rawColor = id === 'user' ? '#FF5D00' : (fleet.find(b => b.id === id)?.color || '#f43f5e');
+          if (!map.getSource('trail-source-user')) {
+            map.addSource('trail-source-user', {
+              type: 'geojson',
+              data: { type: 'FeatureCollection', features: [] }
+            });
+          }
+          if (!map.getSource('trail-source-user-line')) {
+            map.addSource('trail-source-user-line', {
+              type: 'geojson',
+              data: { type: 'FeatureCollection', features: [] }
+            });
+          }
 
-          // 1. Wake layer (fuzzy white-blue foam wake)
-          map.addLayer({
-            id: wakeLayerId,
-            type: 'line',
-            source: sourceId,
-            paint: {
-              'line-width': 15,
-              'line-opacity': 0.34,
-              'line-blur': 6,
-              'line-gradient': [
-                'interpolate',
-                ['linear'],
-                ['line-progress'],
-                0, 'rgba(224, 242, 254, 0)',
-                0.45, 'rgba(224, 242, 254, 0.08)',
-                0.82, 'rgba(255, 255, 255, 0.2)',
-                1, 'rgba(255, 255, 255, 0.42)'
-              ]
-            },
-            layout: {
-              'line-cap': 'round',
-              'line-join': 'round'
-            }
-          }, beforeLayerId);
+          if (!map.getLayer('trail-layer-user-line') && map.getSource('trail-source-user-line')) {
+            // A. Faint connecting line underneath circles (solid 100% visible orange)
+            map.addLayer({
+              id: 'trail-layer-user-line',
+              type: 'line',
+              source: 'trail-source-user-line',
+              paint: {
+                'line-width': 1.8,
+                'line-opacity': 0.85,
+                'line-color': '#FF5D00'
+              },
+              layout: {
+                'line-cap': 'round',
+                'line-join': 'round'
+              }
+            }, beforeLayerId);
+          }
+
+          if (!map.getLayer('trail-layer-user-circles') && map.getSource('trail-source-user')) {
+            // B. Data collection circles on top
+            map.addLayer({
+              id: 'trail-layer-user-circles',
+              type: 'circle',
+              source: 'trail-source-user',
+              paint: {
+                'circle-radius': [
+                  'interpolate',
+                  ['linear'],
+                  ['zoom'],
+                  10, 1.2,
+                  15, 2.2,
+                  18, 3.5,
+                  21, 6.0
+                ],
+                'circle-color': '#FF5D00',
+                'circle-opacity': ['get', 'opacity'],
+                'circle-stroke-width': 1,
+                'circle-stroke-color': '#ffffff',
+                'circle-stroke-opacity': ['get', 'opacity'],
+                'circle-pitch-alignment': 'map'
+              }
+            }, beforeLayerId);
+          }
+
+          // C. Setup syncing queue layers (Yellow)
+          if (!map.getSource('trail-source-user-sync')) {
+            map.addSource('trail-source-user-sync', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+          }
+          if (!map.getSource('trail-source-user-sync-line')) {
+            map.addSource('trail-source-user-sync-line', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+          }
+          if (!map.getLayer('trail-layer-user-sync-line') && map.getSource('trail-source-user-sync-line')) {
+            map.addLayer({
+              id: 'trail-layer-user-sync-line',
+              type: 'line',
+              source: 'trail-source-user-sync-line',
+              paint: {
+                'line-width': 1.8,
+                'line-opacity': 0.85,
+                'line-color': '#EAB308'
+              },
+              layout: {
+                'line-cap': 'round',
+                'line-join': 'round'
+              }
+            }, beforeLayerId);
+          }
+          if (!map.getLayer('trail-layer-user-sync-circles') && map.getSource('trail-source-user-sync')) {
+            map.addLayer({
+              id: 'trail-layer-user-sync-circles',
+              type: 'circle',
+              source: 'trail-source-user-sync',
+              paint: {
+                'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 1.2, 15, 2.2, 18, 3.5, 21, 6.0],
+                'circle-color': '#EAB308',
+                'circle-opacity': ['get', 'opacity'],
+                'circle-stroke-width': 1,
+                'circle-stroke-color': '#ffffff',
+                'circle-stroke-opacity': ['get', 'opacity'],
+                'circle-pitch-alignment': 'map'
+              }
+            }, beforeLayerId);
+          }
+
+          // D. Setup offline queue layers (Red)
+          if (!map.getSource('trail-source-user-off')) {
+            map.addSource('trail-source-user-off', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+          }
+          if (!map.getSource('trail-source-user-off-line')) {
+            map.addSource('trail-source-user-off-line', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+          }
+          if (!map.getLayer('trail-layer-user-off-line') && map.getSource('trail-source-user-off-line')) {
+            map.addLayer({
+              id: 'trail-layer-user-off-line',
+              type: 'line',
+              source: 'trail-source-user-off-line',
+              paint: {
+                'line-width': 1.8,
+                'line-opacity': 0.85,
+                'line-color': '#EF4444'
+              },
+              layout: {
+                'line-cap': 'round',
+                'line-join': 'round'
+              }
+            }, beforeLayerId);
+          }
+          if (!map.getLayer('trail-layer-user-off-circles') && map.getSource('trail-source-user-off')) {
+            map.addLayer({
+              id: 'trail-layer-user-off-circles',
+              type: 'circle',
+              source: 'trail-source-user-off',
+              paint: {
+                'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 1.2, 15, 2.2, 18, 3.5, 21, 6.0],
+                'circle-color': '#EF4444',
+                'circle-opacity': ['get', 'opacity'],
+                'circle-stroke-width': 1,
+                'circle-stroke-color': '#ffffff',
+                'circle-stroke-opacity': ['get', 'opacity'],
+                'circle-pitch-alignment': 'map'
+              }
+            }, beforeLayerId);
+          }
+
+
+        } else {
+          if (!map.getSource(sourceId)) {
+            map.addSource(sourceId, {
+              type: 'geojson',
+              lineMetrics: true, // required for line-gradient
+              data: { type: 'FeatureCollection', features: [] }
+            });
+
+            const rawColor = id === 'user' ? '#FF5D00' : (fleet.find(b => b.id === id)?.color || '#f43f5e');
+
+            // 1. Wake layer (fuzzy white-blue foam wake)
+            map.addLayer({
+              id: wakeLayerId,
+              type: 'line',
+              source: sourceId,
+              paint: {
+                'line-width': 15,
+                'line-opacity': 0.34,
+                'line-blur': 6,
+                'line-gradient': [
+                  'interpolate',
+                  ['linear'],
+                  ['line-progress'],
+                  0, 'rgba(224, 242, 254, 0)',
+                  0.45, 'rgba(224, 242, 254, 0.08)',
+                  0.82, 'rgba(255, 255, 255, 0.2)',
+                  1, 'rgba(255, 255, 255, 0.42)'
+                ]
+              },
+              layout: {
+                'line-cap': 'round',
+                'line-join': 'round'
+              }
+            }, beforeLayerId);
 
           // 2. Core path layer (sharp fading color trail)
           map.addLayer({
@@ -1035,10 +1240,11 @@ export default function ThreeDMap({
             }
           }, beforeLayerId);
         }
-      });
+      }
+    });
     };
 
-    if (map.loaded()) {
+    if (isMapLoadedRef.current) {
       setupLayers();
       if (updateTelemetryRef.current) updateTelemetryRef.current();
     } else {
@@ -1055,12 +1261,43 @@ export default function ThreeDMap({
     if (!map) return;
 
     const updateTelemetryLayers = () => {
-      // 1. Save User Trail points to ref
+      // 1. Update User Trail (Draw all recorded/saved dots connected by lines)
       userTrailPointsRef.current = [...trace];
-      seedRenderedTrail(renderedTrailPointsRef, 'user', trace, 110);
       const userTrailSource = map.getSource('trail-source-user');
-      if (userTrailSource) {
-        userTrailSource.setData(makeTrailData(renderedTrailPointsRef.current.user));
+      const userLineSource = map.getSource('trail-source-user-line');
+      if (trace && trace.length >= 2) {
+        if (userTrailSource) userTrailSource.setData(makeUserPointsGeoJson(trace));
+        if (userLineSource) userLineSource.setData(makeTrailData(trace));
+      }
+
+      // 1B. Update User Syncing/Offline buffered trails
+      const userSyncSource = map.getSource('trail-source-user-sync');
+      const userSyncLineSource = map.getSource('trail-source-user-sync-line');
+      const userOffSource = map.getSource('trail-source-user-off');
+      const userOffLineSource = map.getSource('trail-source-user-off-line');
+
+      if (userSyncSource || userSyncLineSource) {
+        const syncPoints = syncingQueue || [];
+        const syncLinePoints = (trace && trace.length > 0 && syncPoints.length > 0)
+          ? [trace[trace.length - 1], ...syncPoints]
+          : syncPoints;
+        if (userSyncSource) userSyncSource.setData(makeUserPointsGeoJson(syncPoints));
+        if (userSyncLineSource) userSyncLineSource.setData(makeTrailData(syncLinePoints));
+      }
+
+      if (userOffSource || userOffLineSource) {
+        const offPoints = offlineQueue || [];
+        let offLinePoints = offPoints;
+        if (offPoints.length > 0) {
+          const basePoint = (syncingQueue && syncingQueue.length > 0)
+            ? syncingQueue[syncingQueue.length - 1]
+            : (trace && trace.length > 0 ? trace[trace.length - 1] : null);
+          if (basePoint) {
+            offLinePoints = [basePoint, ...offPoints];
+          }
+        }
+        if (userOffSource) userOffSource.setData(makeUserPointsGeoJson(offPoints));
+        if (userOffLineSource) userOffLineSource.setData(makeTrailData(offLinePoints));
       }
 
       // 2. Save AI Trails points to ref
@@ -1069,7 +1306,7 @@ export default function ThreeDMap({
           fleetTrailPointsRef.current[boatId] = points;
           seedRenderedTrail(renderedTrailPointsRef, boatId, points, 95);
           const trailSource = map.getSource(`trail-source-${boatId}`);
-          if (trailSource) {
+          if (trailSource && renderedTrailPointsRef.current[boatId] && renderedTrailPointsRef.current[boatId].length >= 2) {
             trailSource.setData(makeTrailData(renderedTrailPointsRef.current[boatId]));
           }
         });
@@ -1136,7 +1373,7 @@ export default function ThreeDMap({
     const timeSinceLastUpdate = now - lastGeoJsonUpdateRef.current;
 
     const performUpdate = () => {
-      if (map.loaded()) {
+      if (isMapLoadedRef.current) {
         updateTelemetryLayers();
       } else {
         map.on('load', updateTelemetryLayers);
@@ -1161,7 +1398,9 @@ export default function ThreeDMap({
         clearTimeout(geoJsonTimeoutRef.current);
       }
     };
-  }, [trace, aiTrails, boatPos, fleet, targetPos, targetName]);
+  }, [trace, aiTrails, boatPos, fleet, targetPos, targetName, offlineQueue, syncingQueue]);
+
+
 
   // Effect 4: Update Checkpoint HTML Markers (Runs ONLY when checkpoints layout or targetName changes)
   useEffect(() => {
@@ -1231,7 +1470,7 @@ export default function ThreeDMap({
     checkpoints.forEach(cp => {
       if (cp.kind === 'buoy' || !cp.coords) return;
       const isTarget = cp.id?.toUpperCase() === targetName.toUpperCase();
-      const markerOpacity = isTarget ? 1 : 0.18;
+      const markerOpacity = isTarget ? 0.95 : 0.16;
       const color = cp.kind === 'start' ? '#22c55e'
         : cp.kind === 'finish' ? '#ef4444' : '#f5cb5c';
 
@@ -1249,13 +1488,14 @@ export default function ThreeDMap({
           el.style.willChange = 'transform';
           el.style.opacity = markerOpacity;
           el.innerHTML = `
-            <div style="
+            <div class="line-endpoint-inner" style="
               width: 18px; 
               height: 18px; 
               border-radius: 50%; 
               background: radial-gradient(circle at 6px 6px, ${color}, #1e293b); 
               box-shadow: 0 3px 6px rgba(0,0,0,0.5);
               border: 2px solid white;
+              opacity: ${isTarget ? 1.0 : 0.55};
             "></div>
           `;
           marker = new maplibregl.Marker({
@@ -1268,6 +1508,10 @@ export default function ThreeDMap({
         } else {
           marker.setLngLat([coord[1], coord[0]]);
           marker.getElement().style.opacity = markerOpacity;
+          const inner = marker.getElement().querySelector('.line-endpoint-inner');
+          if (inner) {
+            inner.style.opacity = isTarget ? '1.0' : '0.55';
+          }
         }
         newMarkers[key] = marker;
         delete markersRef.current[key];
@@ -1360,7 +1604,14 @@ export default function ThreeDMap({
   const cycleCameraPreset = () => {
     const currentIndex = availableCameraPresets.findIndex(preset => preset.id === activePreset);
     const nextPreset = availableCameraPresets[(currentIndex + 1) % availableCameraPresets.length] || availableCameraPresets[0];
-    if (nextPreset) setActivePreset(nextPreset.id);
+    if (nextPreset) {
+      if (overrideTimeoutRef.current) {
+        clearTimeout(overrideTimeoutRef.current);
+        overrideTimeoutRef.current = null;
+      }
+      lastAutoPresetRef.current = nextPreset.id;
+      setActivePreset(nextPreset.id);
+    }
   };
 
   return (
@@ -1376,54 +1627,49 @@ export default function ThreeDMap({
         title={`${activeCameraPreset.desc}. Tap to cycle camera preset.`}
         onClick={cycleCameraPreset}
         style={{
-        position: 'absolute',
-        left: '12px',
-        top: '48px',
-        transform: 'none',
-        zIndex: 1000,
-        background: 'rgba(255,255,255,0.9)',
-        backdropFilter: 'blur(10px)',
-        WebkitBackdropFilter: 'blur(10px)',
-        border: '1px solid rgba(0,0,0,0.1)',
-        borderRadius: '19px',
-        padding: '5px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#ffffff',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-        cursor: 'pointer',
-        width: '36px',
-        height: '36px',
-        backgroundColor: 'var(--accent-blue)'
-      }}
+          position: 'absolute',
+          left: '118px',
+          top: '10px',
+          zIndex: 1001,
+          background: 'rgba(255,255,255,0.9)',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+          border: '1px solid rgba(0,0,0,0.1)',
+          borderRadius: '16px',
+          padding: '3px 12px 3px 3px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          color: 'var(--text-primary)',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+          cursor: 'pointer',
+          height: '32px',
+          fontFamily: 'inherit',
+          outline: 'none',
+          boxSizing: 'border-box'
+        }}
       >
-        <Video size={18} strokeWidth={2.6} />
-      </button>
-      {showCameraLabel && (
-        <div
-          style={{
-            position: 'absolute',
-            left: '54px',
-            top: '49px',
-            zIndex: 1000,
-            background: 'rgba(255,255,255,0.92)',
-            backdropFilter: 'blur(10px)',
-            WebkitBackdropFilter: 'blur(10px)',
-            color: 'var(--text-primary)',
-            border: '1px solid rgba(0,0,0,0.1)',
-            borderRadius: '18px',
-            padding: '8px 12px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-            fontWeight: 800,
-            fontSize: '0.78rem',
-            lineHeight: 1,
-            pointerEvents: 'none'
-          }}
-        >
-          {activeCameraPreset.label}
+        <div style={{
+          width: '24px',
+          height: '24px',
+          borderRadius: '50%',
+          backgroundColor: 'var(--accent-blue)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#ffffff'
+        }}>
+          <Video size={12} strokeWidth={2.8} />
         </div>
-      )}
+        <span style={{
+          fontWeight: 700,
+          fontSize: '0.78rem',
+          lineHeight: 1,
+          color: 'var(--text-primary)'
+        }}>
+          {activePreset === 'manual' ? 'Manual Cam' : activeCameraPreset.label}
+        </span>
+      </button>
     </div>
   );
 }
