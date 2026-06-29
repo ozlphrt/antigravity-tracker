@@ -81,7 +81,7 @@ function App() {
         </div>
       </header>
       
-      <main style={activeModule === 'committee' ? { flex: 1, position: 'relative', overflow: 'hidden' } : undefined} className={activeModule === 'committee' ? undefined : 'crew-main'}>
+      <main style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {activeModule === 'boat' ? (
           <BoatPwaMain courseOverride={designedCourse} onStatusChange={setBoatStatus} showDots={showDots} />
         ) : (
