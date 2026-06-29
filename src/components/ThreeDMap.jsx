@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import * as turf from '@turf/turf';
+import { Video } from 'lucide-react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 // Helper functions for camera presets
@@ -24,6 +25,117 @@ function getMaxDistanceBetween(centerVal, coords) {
   return maxD;
 }
 
+function getCheckpointMapCenter(cp) {
+  if (!cp) return null;
+  if (cp.coord) return [cp.coord[1], cp.coord[0]];
+  if (cp.coords && cp.coords.length > 0) {
+    const lat = cp.coords.reduce((sum, coord) => sum + coord[0], 0) / cp.coords.length;
+    const lng = cp.coords.reduce((sum, coord) => sum + coord[1], 0) / cp.coords.length;
+    return [lng, lat];
+  }
+  return null;
+}
+
+function getBoundsCamera(map, coords, bearing, fallbackZoom = 16, options = {}) {
+  const validCoords = (coords || [])
+    .filter(coord => Array.isArray(coord) && Number.isFinite(coord[0]) && Number.isFinite(coord[1]));
+  const pitch = options.pitch ?? CAMERA_PITCH;
+  const maxZoom = options.maxZoom ?? CAMERA_MAX_ZOOM;
+  const padding = options.padding || {
+    top: 92,
+    right: 84,
+    bottom: 230,
+    left: 84
+  };
+
+  if (validCoords.length === 0) return null;
+  if (validCoords.length === 1) {
+    return { center: validCoords[0], zoom: Math.min(fallbackZoom, maxZoom), bearing, pitch };
+  }
+
+  const bounds = new maplibregl.LngLatBounds(validCoords[0], validCoords[0]);
+  validCoords.slice(1).forEach(coord => bounds.extend(coord));
+
+  const camera = map.cameraForBounds(bounds, {
+    bearing,
+    pitch,
+    maxZoom,
+    padding
+  });
+
+  if (!camera || !camera.center) {
+    const center = getCenterOfCoords(validCoords);
+    const maxDist = getMaxDistanceBetween(center, validCoords);
+    return {
+      center,
+      zoom: Math.max(14.2, Math.min(maxZoom, 17.8 - Math.log2(maxDist * 1000 + 1) * 0.75)),
+      bearing,
+      pitch
+    };
+  }
+
+  return {
+    center: [camera.center.lng, camera.center.lat],
+    zoom: Math.min(camera.zoom, maxZoom),
+    bearing,
+    pitch
+  };
+}
+
+function getFleetCamera(map, coords, bearing) {
+  return getBoundsCamera(map, coords, bearing, 15.7, {
+    pitch: CAMERA_PITCH,
+    maxZoom: Math.min(CAMERA_MAX_ZOOM, 17.4),
+    padding: {
+      top: 110,
+      right: 120,
+      bottom: 310,
+      left: 120
+    }
+  });
+}
+
+function getChaseCamera(boat, baseZoom, targetPos, targetName) {
+  const boatPoint = turf.point([boat.lng, boat.lat]);
+  const heading = boat.heading || 0;
+  const lookAhead = turf.destination(boatPoint, 0.075, heading, { units: 'kilometers' }).geometry.coordinates;
+
+  return {
+    center: [
+      boat.lng * 0.36 + lookAhead[0] * 0.64,
+      boat.lat * 0.36 + lookAhead[1] * 0.64
+    ],
+    zoom: getFollowCameraZoom(baseZoom, boat, targetPos, targetName),
+    bearing: heading
+  };
+}
+
+function smoothAngle(current, target, factor) {
+  let diff = target - current;
+  while (diff <= -180) diff += 360;
+  while (diff > 180) diff -= 360;
+  return (current + diff * factor + 360) % 360;
+}
+
+function moveCameraToward(map, camera, factor = 0.08) {
+  const currentCenter = map.getCenter();
+  const centerLng = currentCenter.lng + (camera.center[0] - currentCenter.lng) * factor;
+  const centerLat = currentCenter.lat + (camera.center[1] - currentCenter.lat) * factor;
+  const currentZoom = map.getZoom();
+  const zoomVal = currentZoom + (camera.zoom - currentZoom) * 0.045;
+  const currentBearing = map.getBearing();
+  const bearingVal = camera.bearing === undefined ? currentBearing : smoothAngle(currentBearing, camera.bearing, 0.06);
+  const currentPitch = map.getPitch();
+  const pitchVal = currentPitch + ((camera.pitch ?? CAMERA_PITCH) - currentPitch) * 0.06;
+
+  map.jumpTo({
+    center: [centerLng, centerLat],
+    zoom: zoomVal,
+    bearing: bearingVal,
+    pitch: pitchVal
+  });
+}
+
 // Convert Hex to RGBA string for style expressions
 function hexToRgba(hex, alpha) {
   let c = hex.replace('#', '');
@@ -34,6 +146,120 @@ function hexToRgba(hex, alpha) {
   const g = parseInt(c.substring(2, 4), 16);
   const b = parseInt(c.substring(4, 6), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function makeTrailData(points) {
+  if (!points || points.length < 2) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: points.map(p => [p.lng, p.lat])
+      }
+    }]
+  };
+}
+
+function makeFleetTrailData(fleet, trailMap) {
+  const colorById = Object.fromEntries((fleet || []).map(boat => [boat.id, boat.color || '#f43f5e']));
+  const features = [];
+
+  Object.entries(trailMap || {}).forEach(([id, points]) => {
+    if (id === 'user' || !Array.isArray(points) || points.length < 2) return;
+    const color = colorById[id] || '#f43f5e';
+
+    for (let i = 1; i < points.length; i += 1) {
+      const prev = points[i - 1];
+      const current = points[i];
+      if (!prev || !current) continue;
+      const progress = i / Math.max(points.length - 1, 1);
+      const opacity = Math.pow(progress, 1.65);
+
+      features.push({
+        type: 'Feature',
+        properties: {
+          color,
+          coreOpacity: 0.08 + opacity * 0.64,
+          wakeOpacity: 0.02 + opacity * 0.22,
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [prev.lng, prev.lat],
+            [current.lng, current.lat]
+          ]
+        }
+      });
+    }
+  });
+
+  return { type: 'FeatureCollection', features };
+}
+
+function normalizeTrailPoints(points, maxPoints = 120) {
+  return (points || [])
+    .filter(p => p && Number.isFinite(p.lat) && Number.isFinite(p.lng))
+    .slice(-maxPoints)
+    .map(p => ({ lat: p.lat, lng: p.lng }));
+}
+
+function seedRenderedTrail(trailRef, id, points, maxPoints = 120) {
+  const normalized = normalizeTrailPoints(points, maxPoints);
+  if (normalized.length < 2) return;
+
+  const current = trailRef.current[id] || [];
+  const currentLast = current[current.length - 1];
+  const seedLast = normalized[normalized.length - 1];
+
+  if (!currentLast) {
+    trailRef.current[id] = normalized;
+    return;
+  }
+
+  const gapMeters = turf.distance(
+    turf.point([currentLast.lng, currentLast.lat]),
+    turf.point([seedLast.lng, seedLast.lat]),
+    { units: 'kilometers' }
+  ) * 1000;
+
+  if (gapMeters > 120 || current.length < 2) {
+    trailRef.current[id] = normalized;
+  }
+}
+
+function appendRenderedTrailPoint(trailRef, lastAppendRef, id, lng, lat, maxPoints = 170) {
+  const now = performance.now();
+  const lastAppend = lastAppendRef.current[id] || 0;
+  const current = trailRef.current[id] || [];
+  const last = current[current.length - 1];
+
+  if (last) {
+    const distanceMeters = turf.distance(
+      turf.point([last.lng, last.lat]),
+      turf.point([lng, lat]),
+      { units: 'kilometers' }
+    ) * 1000;
+
+    if (distanceMeters > 120) {
+      trailRef.current[id] = [{ lng, lat }];
+      lastAppendRef.current[id] = now;
+      return trailRef.current[id];
+    }
+
+    if (distanceMeters < 0.35 || now - lastAppend < 55) {
+      return current;
+    }
+  }
+
+  const next = [...current, { lng, lat }].slice(-maxPoints);
+  trailRef.current[id] = next;
+  lastAppendRef.current[id] = now;
+  return next;
 }
 
 // Generate Canvas Boat Images for MapLibre WebGL Symbol Layer
@@ -63,6 +289,12 @@ function createBoatImage(color) {
   return ctx.getImageData(0, 0, size, size);
 }
 
+const SATELLITE_MAX_NATIVE_ZOOM = 17;
+const CAMERA_PITCH = 20;
+const LOW_CAMERA_PITCH = 12;
+const CAMERA_CLOSE_ZOOM_BOOST = 1.65;
+const CAMERA_MAX_ZOOM = 18.15;
+
 const maplibreStyle = {
   version: 8,
   sources: {
@@ -70,7 +302,7 @@ const maplibreStyle = {
       type: 'raster',
       tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
       tileSize: 256,
-      maxzoom: 19
+      maxzoom: SATELLITE_MAX_NATIVE_ZOOM
     }
   },
   layers: [
@@ -84,10 +316,31 @@ const maplibreStyle = {
     {
       id: 'satellite-layer',
       type: 'raster',
-      source: 'satellite'
+      source: 'satellite',
+      paint: {
+        'raster-resampling': 'linear',
+        'raster-fade-duration': 80
+      }
     }
   ]
 };
+
+function getFollowCameraZoom(baseZoom, boat, targetPos, targetName) {
+  let targetZoom = baseZoom + CAMERA_CLOSE_ZOOM_BOOST;
+
+  if (boat && targetPos && targetPos[0] && targetPos[1] && targetName !== 'FINISHED') {
+    const boatPt = turf.point([boat.lng, boat.lat]);
+    const targetPt = turf.point([targetPos[1], targetPos[0]]);
+    const distKm = turf.distance(boatPt, targetPt, { units: 'kilometers' });
+
+    if (distKm < 0.4) {
+      const factor = Math.max(0, Math.min(1, (0.4 - distKm) / 0.4));
+      targetZoom += factor * 1.4;
+    }
+  }
+
+  return Math.min(targetZoom, CAMERA_MAX_ZOOM);
+}
 
 export default function ThreeDMap({
   checkpoints = [],
@@ -106,22 +359,36 @@ export default function ThreeDMap({
   const lastCameraMoveRef = useRef(0);
   const lastGeoJsonUpdateRef = useRef(0);
   const geoJsonTimeoutRef = useRef(null);
-  const [activePreset, setActivePreset] = useState('follow');
-  const activePresetRef = useRef('follow');
+  const programmaticCameraMoveRef = useRef(false);
+  const [activePreset, setActivePreset] = useState('target');
+  const [showCameraLabel, setShowCameraLabel] = useState(true);
+  const activePresetRef = useRef('target');
 
   useEffect(() => {
     activePresetRef.current = activePreset;
+  }, [activePreset]);
+
+  useEffect(() => {
+    setShowCameraLabel(true);
+    const timer = window.setTimeout(() => setShowCameraLabel(false), 1400);
+    return () => window.clearTimeout(timer);
   }, [activePreset]);
 
   const autoRotateAngleRef = useRef(0);
 
   const boatPosRef = useRef(boatPos);
   const fleetRef = useRef(fleet);
+  const checkpointsRef = useRef(checkpoints);
+  const targetPosRef = useRef(targetPos);
+  const targetNameRef = useRef(targetName);
+  const zoomRef = useRef(zoom);
   const animatedBoatsRef = useRef({});
   const isMapLoadedRef = useRef(false);
   const updateTelemetryRef = useRef(null);
   const userTrailPointsRef = useRef([]);
   const fleetTrailPointsRef = useRef({});
+  const renderedTrailPointsRef = useRef({});
+  const renderedTrailLastAppendRef = useRef({});
 
   useEffect(() => {
     boatPosRef.current = boatPos;
@@ -131,6 +398,22 @@ export default function ThreeDMap({
     fleetRef.current = fleet;
   }, [fleet]);
 
+  useEffect(() => {
+    checkpointsRef.current = checkpoints;
+  }, [checkpoints]);
+
+  useEffect(() => {
+    targetPosRef.current = targetPos;
+  }, [targetPos]);
+
+  useEffect(() => {
+    targetNameRef.current = targetName;
+  }, [targetName]);
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
   // requestAnimationFrame loop to smoothly interpolate boat positions at 60 FPS (fixes stuttering)
   useEffect(() => {
     let frameId;
@@ -139,6 +422,8 @@ export default function ThreeDMap({
         const map = mapRef.current;
         if (map && map.getSource('boats-source')) {
           const boatFeatures = [];
+          let userAnim = null;
+          const fleetAnimCoords = [];
 
           // 1. User Boat
           if (boatPosRef.current && boatPosRef.current.lat && boatPosRef.current.lng) {
@@ -158,44 +443,20 @@ export default function ThreeDMap({
               anim.heading = (anim.heading + diff * 0.15 + 360) % 360;
             }
             animatedBoatsRef.current[id] = anim;
-
-            // Silky smooth 60 FPS camera follow (damped centering)
-            if (activePresetRef.current === 'follow') {
-              const currentCenter = map.getCenter();
-              const cameraLat = currentCenter.lat + (anim.lat - currentCenter.lat) * 0.08;
-              const cameraLng = currentCenter.lng + (anim.lng - currentCenter.lng) * 0.08;
-              map.jumpTo({ center: [cameraLng, cameraLat] });
-            }
+            userAnim = anim;
 
             // Real-time 60 FPS User Trail updates matching the smooth boat coordinates
             const userSource = map.getSource('trail-source-user');
-            if (userSource && userTrailPointsRef.current) {
-              const userPoints = userTrailPointsRef.current.filter(p => p && p.lat && p.lng);
-              const coords = userPoints.map(p => [p.lng, p.lat]);
-              
-              // Append the latest interpolated position to the end of the trail
-              coords.push([anim.lng, anim.lat]);
-              
-              const first = coords[0];
-              const last = coords[coords.length - 1];
-              const hasLength = first && last && (Math.abs(first[1] - last[1]) > 0.00005 || Math.abs(first[0] - last[0]) > 0.00005);
-              
-              userSource.setData({
-                type: 'FeatureCollection',
-                features: (coords.length >= 2 && hasLength) ? [{
-                  type: 'Feature',
-                  geometry: {
-                    type: 'LineString',
-                    coordinates: coords
-                  }
-                }] : [{
-                  type: 'Feature',
-                  geometry: {
-                    type: 'LineString',
-                    coordinates: [[0, 0], [0.001, 0.001]]
-                  }
-                }]
-              });
+            if (userSource) {
+              const visualTrail = appendRenderedTrailPoint(
+                renderedTrailPointsRef,
+                renderedTrailLastAppendRef,
+                'user',
+                anim.lng,
+                anim.lat,
+                190
+              );
+              userSource.setData(makeTrailData(visualTrail));
             }
 
             boatFeatures.push({
@@ -248,39 +509,23 @@ export default function ThreeDMap({
               anim.heading = (anim.heading + diff * 0.15 + 360) % 360;
             }
             animatedBoatsRef.current[id] = anim;
+            fleetAnimCoords.push([anim.lng, anim.lat]);
 
             const colorHex = (boat.color || '#f43f5e').replace('#', '');
             const iconName = `boat-fleet-${colorHex}`;
 
             // Real-time 60 FPS AI Trail updates matching the smooth boat coordinates
             const trailSource = map.getSource(`trail-source-${id}`);
-            if (trailSource && fleetTrailPointsRef.current[id]) {
-              const fleetPoints = fleetTrailPointsRef.current[id].filter(p => p && p.lat && p.lng);
-              const coords = fleetPoints.map(p => [p.lng, p.lat]);
-              
-              // Append the latest interpolated position to the end of the trail
-              coords.push([anim.lng, anim.lat]);
-              
-              const first = coords[0];
-              const last = coords[coords.length - 1];
-              const hasLength = first && last && (Math.abs(first[1] - last[1]) > 0.00005 || Math.abs(first[0] - last[0]) > 0.00005);
-              
-              trailSource.setData({
-                type: 'FeatureCollection',
-                features: (coords.length >= 2 && hasLength) ? [{
-                  type: 'Feature',
-                  geometry: {
-                    type: 'LineString',
-                    coordinates: coords
-                  }
-                }] : [{
-                  type: 'Feature',
-                  geometry: {
-                    type: 'LineString',
-                    coordinates: [[0, 0], [0.001, 0.001]]
-                  }
-                }]
-              });
+            if (trailSource) {
+              const visualTrail = appendRenderedTrailPoint(
+                renderedTrailPointsRef,
+                renderedTrailLastAppendRef,
+                id,
+                anim.lng,
+                anim.lat,
+                145
+              );
+              trailSource.setData(makeTrailData(visualTrail));
             }
 
             boatFeatures.push({
@@ -297,6 +542,73 @@ export default function ThreeDMap({
               }
             });
           });
+
+          const fleetTrailsSource = map.getSource('fleet-trails-source');
+          if (fleetTrailsSource) {
+            fleetTrailsSource.setData(makeFleetTrailData(fleetRef.current, renderedTrailPointsRef.current));
+          }
+
+          if (userAnim) {
+            const activePresetId = activePresetRef.current;
+            let camera = null;
+
+            if (activePresetId === 'follow') {
+              camera = getChaseCamera(userAnim, zoomRef.current, targetPosRef.current, targetNameRef.current);
+            } else if (activePresetId === 'all-boats') {
+              const coords = [[userAnim.lng, userAnim.lat], ...fleetAnimCoords];
+              camera = getFleetCamera(map, coords, userAnim.heading || 0);
+            } else if (activePresetId === 'target' && targetPosRef.current && targetPosRef.current[0]) {
+              const targetLng = targetPosRef.current[1];
+              const targetLat = targetPosRef.current[0];
+              const targetPt = turf.point([targetLng, targetLat]);
+              const boatPt = turf.point([userAnim.lng, userAnim.lat]);
+              camera = getBoundsCamera(
+                map,
+                [[userAnim.lng, userAnim.lat], [targetLng, targetLat]],
+                turf.bearing(targetPt, boatPt),
+                17.0,
+                {
+                  pitch: LOW_CAMERA_PITCH,
+                  maxZoom: CAMERA_MAX_ZOOM,
+                  padding: { top: 54, right: 70, bottom: 250, left: 70 }
+                }
+              );
+            } else if (activePresetId === 'last-target') {
+              const currentTargetName = (targetNameRef.current || '').toUpperCase();
+              const targetIdx = checkpointsRef.current.findIndex(cp => cp.id?.toUpperCase() === currentTargetName);
+              const lastCp = targetIdx > 0
+                ? checkpointsRef.current[targetIdx - 1]
+                : checkpointsRef.current.find(cp => cp.kind === 'start');
+              const lastCenter = getCheckpointMapCenter(lastCp);
+              if (lastCenter) {
+                const lastPt = turf.point(lastCenter);
+                const boatPt = turf.point([userAnim.lng, userAnim.lat]);
+                camera = getBoundsCamera(
+                  map,
+                  [[userAnim.lng, userAnim.lat], lastCenter],
+                  turf.bearing(lastPt, boatPt),
+                  17.0,
+                  {
+                    pitch: LOW_CAMERA_PITCH,
+                    maxZoom: CAMERA_MAX_ZOOM,
+                    padding: { top: 54, right: 70, bottom: 250, left: 70 }
+                  }
+                );
+              }
+            } else if (activePresetId === 'auto-rotate') {
+              autoRotateAngleRef.current = (autoRotateAngleRef.current + 0.15) % 360;
+              const coords = [[userAnim.lng, userAnim.lat], ...fleetAnimCoords];
+              camera = getFleetCamera(map, coords, autoRotateAngleRef.current);
+            }
+
+            if (camera) {
+              programmaticCameraMoveRef.current = true;
+              moveCameraToward(map, camera);
+              window.setTimeout(() => {
+                programmaticCameraMoveRef.current = false;
+              }, 0);
+            }
+          }
 
           if (map.getSource('boats-source')) {
             map.getSource('boats-source').setData({
@@ -326,8 +638,10 @@ export default function ThreeDMap({
       container: mapContainerRef.current,
       style: maplibreStyle,
       center: mapCenter,
-      zoom: zoom - 1,
-      pitch: 55, // Slightly reduced pitch to request fewer tiles near the horizon
+      zoom: Math.min(zoom + CAMERA_CLOSE_ZOOM_BOOST, CAMERA_MAX_ZOOM),
+      pitch: CAMERA_PITCH,
+      maxPitch: 70,
+      maxZoom: CAMERA_MAX_ZOOM,
       bearing: -15,
       antialias: true,
       fadeDuration: 100, // Speed up tile fade-in duration
@@ -348,6 +662,7 @@ export default function ThreeDMap({
 
     map.on('load', () => {
       isMapLoadedRef.current = true;
+      map.setPitch(CAMERA_PITCH);
 
       map.addSource('course-lines', {
         type: 'geojson',
@@ -418,6 +733,42 @@ export default function ThreeDMap({
         }
       });
 
+      map.addSource('fleet-trails-source', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+      });
+
+      map.addLayer({
+        id: 'fleet-trails-wake-layer',
+        type: 'line',
+        source: 'fleet-trails-source',
+        paint: {
+          'line-color': '#ffffff',
+          'line-width': 10,
+          'line-blur': 5,
+          'line-opacity': ['get', 'wakeOpacity']
+        },
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round'
+        }
+      }, 'boats-layer');
+
+      map.addLayer({
+        id: 'fleet-trails-core-layer',
+        type: 'line',
+        source: 'fleet-trails-source',
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': 2.7,
+          'line-opacity': ['get', 'coreOpacity']
+        },
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round'
+        }
+      }, 'boats-layer');
+
       let hoveredBoatId = null;
       map.on('mousemove', 'boats-layer', (e) => {
         map.getCanvas().style.cursor = 'pointer';
@@ -468,7 +819,7 @@ export default function ThreeDMap({
         paint: {
           'line-color': ['get', 'color'],
           'line-width': 12,
-          'line-opacity': 0.85
+          'line-opacity': ['get', 'opacity']
         },
         layout: {
           'line-cap': 'round',
@@ -523,7 +874,10 @@ export default function ThreeDMap({
       visualizePitch: true
     }));
 
-    const clearPreset = () => setActivePreset('manual');
+    const clearPreset = () => {
+      if (programmaticCameraMoveRef.current) return;
+      setActivePreset('manual');
+    };
     map.on('dragstart', clearPreset);
     map.on('zoomstart', clearPreset);
     map.on('pitchstart', clearPreset);
@@ -540,36 +894,7 @@ export default function ThreeDMap({
     };
   }, []);
 
-  // Effect 1: Auto zoom-in based on distance to buoy target
-  useEffect(() => {
-    if (activePreset !== 'follow') return;
-    const map = mapRef.current;
-    if (!map || !boatPos || !boatPos.lat || !boatPos.lng) return;
-
-    let targetZoom = zoom - 1; // Default zoom (approx 14.5)
-    if (targetPos && targetPos[0] && targetPos[1] && targetName !== 'FINISHED') {
-      const boatPt = turf.point([boatPos.lng, boatPos.lat]);
-      const targetPt = turf.point([targetPos[1], targetPos[0]]);
-      const distKm = turf.distance(boatPt, targetPt, { units: 'kilometers' });
-      if (distKm < 0.4) {
-        const factor = Math.max(0, Math.min(1, (0.4 - distKm) / 0.4));
-        targetZoom = (zoom - 1) + factor * 2.2; // Zoom in up to 2.2 levels closer
-      }
-    }
-
-    const currentZoom = map.getZoom();
-    const zoomDiff = Math.abs(currentZoom - targetZoom);
-
-    if (zoomDiff > 0.15) {
-      map.easeTo({
-        zoom: targetZoom,
-        duration: 1000,
-        essential: true
-      });
-    }
-  }, [boatPos?.lat, boatPos?.lng, activePreset, targetPos, targetName, zoom]);
-
-  // Effect 2: Update Static Course GeoJSON sources (Depends only on checkpoints layout)
+  // Effect 1: Update Static Course GeoJSON sources (Depends only on checkpoints layout)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -601,15 +926,20 @@ export default function ThreeDMap({
         }] : []
       });
 
+      const activeTargetName = (targetName || '').toUpperCase();
       const gateFeatures = checkpoints
         .filter(cp => cp.kind !== 'buoy' && cp.coords)
         .map(cp => {
+          const isTarget = cp.id?.toUpperCase() === activeTargetName;
           const color = cp.kind === 'start' ? '#22c55e'
             : cp.kind === 'finish' ? '#ef4444' : '#f5cb5c';
 
           return {
             type: 'Feature',
-            properties: { color },
+            properties: {
+              color,
+              opacity: isTarget ? 0.95 : 0.16
+            },
             geometry: {
               type: 'LineString',
               coordinates: [
@@ -631,7 +961,7 @@ export default function ThreeDMap({
     } else {
       map.on('load', updateStaticLayers);
     }
-  }, [checkpoints]);
+  }, [checkpoints, targetName]);
   // Setup dynamic trail sources/layers for each boat (gradient trails redesigned from scratch)
   // Setup dynamic trail sources/layers for each boat (gradient trails redesigned from scratch)
   useEffect(() => {
@@ -651,16 +981,7 @@ export default function ThreeDMap({
           map.addSource(sourceId, {
             type: 'geojson',
             lineMetrics: true, // required for line-gradient
-            data: {
-              type: 'FeatureCollection',
-              features: [{
-                type: 'Feature',
-                geometry: {
-                  type: 'LineString',
-                  coordinates: [[0, 0], [0.001, 0.001]]
-                }
-              }]
-            }
+            data: { type: 'FeatureCollection', features: [] }
           });
 
           const rawColor = id === 'user' ? '#FF5D00' : (fleet.find(b => b.id === id)?.color || '#f43f5e');
@@ -671,17 +992,17 @@ export default function ThreeDMap({
             type: 'line',
             source: sourceId,
             paint: {
-              'line-width': 18,
-              'line-opacity': 0.35,
-              'line-blur': 5,
+              'line-width': 15,
+              'line-opacity': 0.34,
+              'line-blur': 6,
               'line-gradient': [
                 'interpolate',
                 ['linear'],
                 ['line-progress'],
                 0, 'rgba(224, 242, 254, 0)',
-                0.5, 'rgba(224, 242, 254, 0.1)',
-                0.8, 'rgba(255, 255, 255, 0.25)',
-                1, 'rgba(255, 255, 255, 0.6)'
+                0.45, 'rgba(224, 242, 254, 0.08)',
+                0.82, 'rgba(255, 255, 255, 0.2)',
+                1, 'rgba(255, 255, 255, 0.42)'
               ]
             },
             layout: {
@@ -696,15 +1017,15 @@ export default function ThreeDMap({
             type: 'line',
             source: sourceId,
             paint: {
-              'line-width': 3.5,
-              'line-opacity': 0.85,
+              'line-width': 3.2,
+              'line-opacity': 0.82,
               'line-gradient': [
                 'interpolate',
                 ['linear'],
                 ['line-progress'],
                 0, 'rgba(255, 255, 255, 0)',
-                0.5, hexToRgba(rawColor, 0.25),
-                0.9, rawColor,
+                0.35, hexToRgba(rawColor, 0.14),
+                0.82, hexToRgba(rawColor, 0.62),
                 1, rawColor
               ]
             },
@@ -736,12 +1057,27 @@ export default function ThreeDMap({
     const updateTelemetryLayers = () => {
       // 1. Save User Trail points to ref
       userTrailPointsRef.current = [...trace];
+      seedRenderedTrail(renderedTrailPointsRef, 'user', trace, 110);
+      const userTrailSource = map.getSource('trail-source-user');
+      if (userTrailSource) {
+        userTrailSource.setData(makeTrailData(renderedTrailPointsRef.current.user));
+      }
 
       // 2. Save AI Trails points to ref
       if (aiTrails) {
         Object.entries(aiTrails).forEach(([boatId, points]) => {
           fleetTrailPointsRef.current[boatId] = points;
+          seedRenderedTrail(renderedTrailPointsRef, boatId, points, 95);
+          const trailSource = map.getSource(`trail-source-${boatId}`);
+          if (trailSource) {
+            trailSource.setData(makeTrailData(renderedTrailPointsRef.current[boatId]));
+          }
         });
+
+        const fleetTrailsSource = map.getSource('fleet-trails-source');
+        if (fleetTrailsSource) {
+          fleetTrailsSource.setData(makeFleetTrailData(fleet, renderedTrailPointsRef.current));
+        }
       }
 
       // 3. Telemetry lines
@@ -842,6 +1178,7 @@ export default function ThreeDMap({
       const isPort = (cp.rounding || 'port').toLowerCase() === 'port';
       const ringColor = isTarget ? '#f26419' : (isPort ? '#ef4444' : '#22c55e');
       const speed = isTarget ? '3.5s' : '5s';
+      const markerOpacity = isTarget ? 1 : 0.22;
       const animName = `spin-${cp.id}`;
       const svgPath = isPort 
         ? `<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>` 
@@ -857,6 +1194,7 @@ export default function ThreeDMap({
         el.style.alignItems = 'center';
         el.style.justifyContent = 'center';
         el.style.willChange = 'transform';
+        el.style.opacity = markerOpacity;
         el.innerHTML = `
           <style>
             @keyframes ${animName}-kf {
@@ -883,6 +1221,7 @@ export default function ThreeDMap({
           .addTo(map);
       } else {
         flatMarker.setLngLat([cp.coord[1], cp.coord[0]]);
+        flatMarker.getElement().style.opacity = markerOpacity;
       }
       newMarkers[flatKey] = flatMarker;
       delete markersRef.current[flatKey];
@@ -891,6 +1230,8 @@ export default function ThreeDMap({
     // 2. Render Line Endpoints and Midpoint Crossing Arrows
     checkpoints.forEach(cp => {
       if (cp.kind === 'buoy' || !cp.coords) return;
+      const isTarget = cp.id?.toUpperCase() === targetName.toUpperCase();
+      const markerOpacity = isTarget ? 1 : 0.18;
       const color = cp.kind === 'start' ? '#22c55e'
         : cp.kind === 'finish' ? '#ef4444' : '#f5cb5c';
 
@@ -906,6 +1247,7 @@ export default function ThreeDMap({
           el.style.alignItems = 'center';
           el.style.justifyContent = 'center';
           el.style.willChange = 'transform';
+          el.style.opacity = markerOpacity;
           el.innerHTML = `
             <div style="
               width: 18px; 
@@ -925,6 +1267,7 @@ export default function ThreeDMap({
             .addTo(map);
         } else {
           marker.setLngLat([coord[1], coord[0]]);
+          marker.getElement().style.opacity = markerOpacity;
         }
         newMarkers[key] = marker;
         delete markersRef.current[key];
@@ -953,6 +1296,7 @@ export default function ThreeDMap({
         el.style.alignItems = 'center';
         el.style.justifyContent = 'center';
         el.style.willChange = 'transform';
+        el.style.opacity = markerOpacity;
         el.innerHTML = `
           <style>
             @keyframes arrow-slide-${cp.id} {
@@ -986,6 +1330,7 @@ export default function ThreeDMap({
       } else {
         midMarker.setLngLat([midLng, midLat]);
         midMarker.setRotation(crossingBearing);
+        midMarker.getElement().style.opacity = markerOpacity;
       }
       newMarkers[midKey] = midMarker;
       delete markersRef.current[midKey];
@@ -1003,141 +1348,20 @@ export default function ThreeDMap({
     Object.assign(markersRef.current, newMarkers);
   }, [checkpoints, targetName]);
 
-
-
-  // Preset 1 effect: All Boats in viewport (Focus coming toward camera)
-  useEffect(() => {
-    if (activePreset !== 'all-boats') return;
-    const map = mapRef.current;
-    if (!map || !boatPos || !boatPos.lat || !boatPos.lng) return;
-
-    const coords = [[boatPos.lng, boatPos.lat]];
-    fleet.forEach(b => {
-      const lat = b.lat || b.pos?.lat;
-      const lng = b.lng || b.pos?.lng;
-      if (lat && lng) coords.push([lng, lat]);
-    });
-
-    const centerVal = getCenterOfCoords(coords);
-    const maxDist = getMaxDistanceBetween(centerVal, coords);
-    const zoomVal = Math.max(13, Math.min(17.5, 16.2 - Math.log2(maxDist * 1000 + 1) * 0.8));
-    const heading = boatPos.heading || 0;
-    const camBearing = (heading + 180) % 360;
-
-    map.easeTo({
-      center: centerVal,
-      zoom: zoomVal,
-      bearing: camBearing,
-      pitch: 50,
-      duration: 600
-    });
-  }, [activePreset, boatPos, fleet]);
-
-  // Preset 2 effect: Focus boat from target location (coming towards)
-  useEffect(() => {
-    if (activePreset !== 'target') return;
-    const map = mapRef.current;
-    if (!map || !boatPos || !boatPos.lat || !boatPos.lng || !targetPos || !targetPos[0]) return;
-
-    const targetLng = targetPos[1];
-    const targetLat = targetPos[0];
-    const targetPt = turf.point([targetLng, targetLat]);
-    const boatPt = turf.point([boatPos.lng, boatPos.lat]);
-
-    const dist = turf.distance(targetPt, boatPt, { units: 'kilometers' });
-    const bearingVal = turf.bearing(targetPt, boatPt);
-    const zoomVal = Math.max(13.5, Math.min(18.0, 16.8 - Math.log2(dist * 1000 + 1) * 0.9));
-
-    map.easeTo({
-      center: [targetLng, targetLat],
-      zoom: zoomVal,
-      bearing: bearingVal,
-      pitch: 60,
-      duration: 600
-    });
-  }, [activePreset, boatPos, targetPos]);
-
-  // Preset 3 effect: Focus boat from last target position (moving from)
-  useEffect(() => {
-    if (activePreset !== 'last-target') return;
-    const map = mapRef.current;
-    if (!map || !boatPos || !boatPos.lat || !boatPos.lng) return;
-
-    const targetIdx = checkpoints.findIndex(cp => cp.id.toUpperCase() === targetName.toUpperCase());
-    let lastCp = null;
-    if (targetIdx > 0) {
-      lastCp = checkpoints[targetIdx - 1];
-    } else {
-      lastCp = checkpoints.find(cp => cp.kind === 'start');
-    }
-
-    let lastLat = null, lastLng = null;
-    if (lastCp) {
-      if (lastCp.coord) {
-        lastLat = lastCp.coord[0];
-        lastLng = lastCp.coord[1];
-      } else if (lastCp.coords && lastCp.coords.length > 0) {
-        lastLat = (lastCp.coords[0][0] + lastCp.coords[1][0]) / 2;
-        lastLng = (lastCp.coords[0][1] + lastCp.coords[1][1]) / 2;
-      }
-    }
-
-    if (lastLat === null || lastLng === null) return;
-
-    const lastPt = turf.point([lastLng, lastLat]);
-    const boatPt = turf.point([boatPos.lng, boatPos.lat]);
-    const dist = turf.distance(lastPt, boatPt, { units: 'kilometers' });
-    const bearingVal = turf.bearing(lastPt, boatPt);
-    const zoomVal = Math.max(13.0, Math.min(18.0, 16.8 - Math.log2(dist * 1000 + 1) * 0.9));
-
-    map.easeTo({
-      center: [lastLng, lastLat],
-      zoom: zoomVal,
-      bearing: bearingVal,
-      pitch: 65,
-      duration: 600
-    });
-  }, [activePreset, boatPos, checkpoints, targetName]);
-
-  // Preset 4 effect: Auto Rotate with all boats in view
-  useEffect(() => {
-    if (activePreset !== 'auto-rotate') return;
-    const map = mapRef.current;
-    if (!map) return;
-
-    let rafId;
-    const rotate = () => {
-      autoRotateAngleRef.current = (autoRotateAngleRef.current + 0.15) % 360;
-
-      const coords = [];
-      if (boatPos && boatPos.lat && boatPos.lng) {
-        coords.push([boatPos.lng, boatPos.lat]);
-      }
-      fleet.forEach(b => {
-        const lat = b.lat || b.pos?.lat;
-        const lng = b.lng || b.pos?.lng;
-        if (lat && lng) coords.push([lng, lat]);
-      });
-
-      if (coords.length > 0) {
-        const centerVal = getCenterOfCoords(coords);
-        const maxDist = getMaxDistanceBetween(centerVal, coords);
-        const zoomVal = Math.max(13, Math.min(17.5, 16.2 - Math.log2(maxDist * 1000 + 1) * 0.8));
-
-        map.jumpTo({
-          center: centerVal,
-          zoom: zoomVal,
-          bearing: autoRotateAngleRef.current,
-          pitch: 45
-        });
-      }
-
-      rafId = requestAnimationFrame(rotate);
-    };
-
-    rafId = requestAnimationFrame(rotate);
-    return () => cancelAnimationFrame(rafId);
-  }, [activePreset, boatPos, fleet]);
+  const cameraPresets = [
+    { id: 'follow', label: 'Chase', desc: 'Follow from behind the user boat' },
+    { id: 'all-boats', label: 'Fleet', desc: 'Keep all boats in view' },
+    { id: 'target', label: 'Target', desc: 'Look from the target buoy', disabled: !targetPos || !targetPos[0] },
+    { id: 'last-target', label: 'Previous', desc: 'Look from the last target' },
+    { id: 'auto-rotate', label: 'Rotate', desc: 'Orbit the fleet' }
+  ];
+  const availableCameraPresets = cameraPresets.filter(preset => !preset.disabled);
+  const activeCameraPreset = cameraPresets.find(preset => preset.id === activePreset) || cameraPresets[0];
+  const cycleCameraPreset = () => {
+    const currentIndex = availableCameraPresets.findIndex(preset => preset.id === activePreset);
+    const nextPreset = availableCameraPresets[(currentIndex + 1) % availableCameraPresets.length] || availableCameraPresets[0];
+    if (nextPreset) setActivePreset(nextPreset.id);
+  };
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -1147,55 +1371,59 @@ export default function ThreeDMap({
         style={{ width: '100%', height: '100%' }} 
       />
       
-      {/* Camera Presets Overlay */}
-      <div style={{
+      <button
+        type="button"
+        title={`${activeCameraPreset.desc}. Tap to cycle camera preset.`}
+        onClick={cycleCameraPreset}
+        style={{
         position: 'absolute',
-        bottom: '24px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 10,
-        background: 'rgba(15, 23, 42, 0.45)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
-        border: '1px solid rgba(255, 255, 255, 0.12)',
-        borderRadius: '24px',
-        padding: '6px 12px',
+        left: '12px',
+        top: '48px',
+        transform: 'none',
+        zIndex: 1000,
+        background: 'rgba(255,255,255,0.9)',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
+        border: '1px solid rgba(0,0,0,0.1)',
+        borderRadius: '19px',
+        padding: '5px',
         display: 'flex',
-        gap: '8px',
-        boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)'
-      }}>
-        {[
-          { id: 'follow', label: 'Follow Boat', desc: 'Lock camera to focus boat' },
-          { id: 'all-boats', label: 'All Boats', desc: 'Focus coming toward camera' },
-          { id: 'target', label: 'Target View', desc: 'Looking from target buoy', disabled: !targetPos || !targetPos[0] },
-          { id: 'last-target', label: 'Last Target', desc: 'Looking from last buoy' },
-          { id: 'auto-rotate', label: 'Auto Rotate', desc: 'Orbiting fleet view' }
-        ].map(preset => {
-          const isActive = activePreset === preset.id;
-          return (
-            <button
-              key={preset.id}
-              disabled={preset.disabled}
-              title={preset.desc}
-              onClick={() => setActivePreset(isActive ? null : preset.id)}
-              style={{
-                background: isActive ? '#06b6d4' : 'transparent',
-                color: preset.disabled ? '#475569' : (isActive ? '#ffffff' : '#e2e8f0'),
-                border: 'none',
-                borderRadius: '16px',
-                padding: '6px 14px',
-                fontSize: '0.8rem',
-                fontWeight: 'bold',
-                cursor: preset.disabled ? 'not-allowed' : 'pointer',
-                transition: 'all 0.2s ease',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              {preset.label}
-            </button>
-          );
-        })}
-      </div>
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#ffffff',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+        cursor: 'pointer',
+        width: '36px',
+        height: '36px',
+        backgroundColor: 'var(--accent-blue)'
+      }}
+      >
+        <Video size={18} strokeWidth={2.6} />
+      </button>
+      {showCameraLabel && (
+        <div
+          style={{
+            position: 'absolute',
+            left: '54px',
+            top: '49px',
+            zIndex: 1000,
+            background: 'rgba(255,255,255,0.92)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            color: 'var(--text-primary)',
+            border: '1px solid rgba(0,0,0,0.1)',
+            borderRadius: '18px',
+            padding: '8px 12px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            fontWeight: 800,
+            fontSize: '0.78rem',
+            lineHeight: 1,
+            pointerEvents: 'none'
+          }}
+        >
+          {activeCameraPreset.label}
+        </div>
+      )}
     </div>
   );
 }

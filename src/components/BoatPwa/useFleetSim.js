@@ -61,6 +61,42 @@ function getLineBearing(cp) {
   return (lb + (cp.crossing === 'up' ? -90 : 90) + 360) % 360;
 }
 
+function getBuoyRoundingPlan(target, targets, targetIndex, boatIndex) {
+  const tPt = turf.point([target.coord[1], target.coord[0]]);
+  const prevTarget = targets[targetIndex - 1];
+  const nextTarget = targets[targetIndex + 1];
+
+  let approachBearing = 0;
+  const prevCenter = getCheckpointCenter(prevTarget);
+  if (prevCenter) {
+    approachBearing = turf.bearing(turf.point([prevCenter.lng, prevCenter.lat]), tPt);
+  }
+
+  let exitBearing = approachBearing;
+  const nextCenter = getCheckpointCenter(nextTarget);
+  if (nextCenter) {
+    exitBearing = turf.bearing(tPt, turf.point([nextCenter.lng, nextCenter.lat]));
+  }
+
+  const isPort = (target.rounding || 'port').toLowerCase() === 'port';
+  const side = isPort ? 90 : -90;
+  const laneDistance = 0.055 + boatIndex * 0.006; // 55m to 103m rounding lanes
+  const approachPoint = turf.destination(tPt, laneDistance, approachBearing + side, { units: 'kilometers' });
+  const exitPoint = turf.destination(tPt, laneDistance, exitBearing + side, { units: 'kilometers' });
+
+  return {
+    approach: {
+      lat: approachPoint.geometry.coordinates[1],
+      lng: approachPoint.geometry.coordinates[0],
+    },
+    exit: {
+      lat: exitPoint.geometry.coordinates[1],
+      lng: exitPoint.geometry.coordinates[0],
+    },
+    laneDistance,
+  };
+}
+
 /** Spawn positions: staggered side-by-side behind the start line */
 function buildSpawnPositions(course) {
   if (!course || !course.checkpoints) {
@@ -186,33 +222,10 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
 
         let desiredBearing;
         if (kind === 'buoy') {
-          // Aim slightly offset to round the buoy on the correct side
-          const prevTarget = targets[tIdx - 1];
-          let approachBearing = 0;
-          if (prevTarget) {
-            const prevCenter = getCheckpointCenter(prevTarget);
-            if (prevCenter) {
-              approachBearing = turf.bearing(turf.point([prevCenter.lng, prevCenter.lat]), tPt);
-            }
-          }
-
-          let exitBearing = approachBearing;
-          const nextTarget = targets[tIdx + 1];
-          if (nextTarget) {
-            const nextCenter = getCheckpointCenter(nextTarget);
-            if (nextCenter) {
-              exitBearing = turf.bearing(tPt, turf.point([nextCenter.lng, nextCenter.lat]));
-            }
-          }
-
-          const isPort = (target.rounding || 'port').toLowerCase() === 'port';
-          const offsetBearing = hasPassedEntranceRef.current[boat.id]
-              ? (exitBearing + (isPort ? 90 : -90))
-              : (approachBearing + (isPort ? 90 : -90));
-
-          const offsetDistance = 0.040 + boatIdx * 0.007; // Staggered lanes from 40m to 96m
-          const offsetPt = turf.destination(tPt, offsetDistance, offsetBearing, { units: 'kilometers' });
-          desiredBearing = turf.bearing(boatPt, offsetPt);
+          // Round through two offset waypoints: approach side first, then exit side.
+          const plan = getBuoyRoundingPlan(target, targets, tIdx, boatIdx);
+          const targetSidePoint = hasPassedEntranceRef.current[boat.id] ? plan.exit : plan.approach;
+          desiredBearing = turf.bearing(boatPt, turf.point([targetSidePoint.lng, targetSidePoint.lat]));
         } else {
           const dist = turf.distance(boatPt, tPt, { units: 'kilometers' });
           if (dist <= 0.12) {
@@ -345,12 +358,16 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
             }
           } else if (kind === 'buoy') {
             const bPt = turf.point([newLng, newLat]);
-            const tPt = turf.point([target.coord[1], target.coord[0]]);
-            const distance = turf.distance(bPt, tPt, { units: 'kilometers' });
-            
-            // Robust proximity check for AI simulated boats (offset lane distance + 150m leeway)
-            const maxRoundingDist = 0.040 + boatIdx * 0.007 + 0.150; 
-            if (distance < maxRoundingDist) {
+            const plan = getBuoyRoundingPlan(target, targets2, tIdx, boatIdx);
+            const approachPt = turf.point([plan.approach.lng, plan.approach.lat]);
+            const exitPt = turf.point([plan.exit.lng, plan.exit.lat]);
+            const approachDistance = turf.distance(bPt, approachPt, { units: 'kilometers' });
+            const exitDistance = turf.distance(bPt, exitPt, { units: 'kilometers' });
+            const waypointRadius = 0.026; // must sail through the rounding lane, not just near the buoy
+
+            if (!hasPassedEntranceRef.current[boat.id] && approachDistance < waypointRadius) {
+              hasPassedEntranceRef.current[boat.id] = true;
+            } else if (hasPassedEntranceRef.current[boat.id] && exitDistance < waypointRadius) {
               targetIndexRef.current[boat.id] = tIdx + 1;
               minDistanceRef.current[boat.id] = Infinity;
               closestSideRef.current[boat.id] = null;
@@ -370,8 +387,8 @@ export function useFleetSim(course, isSimMode, timeMultiplier = 20) {
           const next = { ...prev };
           Object.entries(newTrailPointsToLog).forEach(([id, pt]) => {
             const trail = next[id] || [];
-            // Keep last 300 trail points per boat (approx 5 to 10 mins of sailing)
-            next[id] = [...trail.slice(-299), pt];
+            // Keep a shorter rolling history so trails fade out instead of cluttering the race area.
+            next[id] = [...trail.slice(-179), pt];
           });
           return next;
         });

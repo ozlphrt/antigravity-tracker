@@ -1357,6 +1357,16 @@ body.dragging-active .leaflet-marker-icon {
   justify-content: center;
 }
 
+.leaflet-marker-icon.boat-marker-icon-shell {
+  transition: transform 90ms linear;
+  will-change: transform;
+}
+
+.boat-marker-icon-shell .boat-heading {
+  transition: transform 110ms linear;
+  will-change: transform;
+}
+
 .steer-wrapper {
   display: flex;
   flex-direction: column;

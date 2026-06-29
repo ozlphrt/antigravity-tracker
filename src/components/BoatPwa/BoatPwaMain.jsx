@@ -28,7 +28,7 @@ const getBrighterColor = (hex) => {
 const createRotatedBoatIcon = (heading, color = '#FF5D00') => {
   const brighterOutline = getBrighterColor(color);
   return new L.DivIcon({
-    html: `<div style="transform: rotate(${heading}deg); width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 0 5px ${color}) drop-shadow(0px 3px 5px rgba(0,0,0,0.3));">
+    html: `<div class="boat-heading" style="transform: rotate(${heading}deg); width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 0 5px ${color}) drop-shadow(0px 3px 5px rgba(0,0,0,0.3));">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="${brighterOutline}" stroke-width="2.5" stroke-linejoin="round" width="30" height="30">
         <path d="M12 2 L19 21 Q12 18 5 21 Z" />
       </svg>
@@ -42,7 +42,7 @@ const createRotatedBoatIcon = (heading, color = '#FF5D00') => {
 const createAiBoatIcon = (heading, color) => {
   const brighterOutline = getBrighterColor(color);
   return new L.DivIcon({
-    html: `<div style="transform: rotate(${heading}deg); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 0 4px ${color}) drop-shadow(0px 3px 5px rgba(0,0,0,0.3));">
+    html: `<div class="boat-heading" style="transform: rotate(${heading}deg); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 0 4px ${color}) drop-shadow(0px 3px 5px rgba(0,0,0,0.3));">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="${color}" stroke="${brighterOutline}" stroke-width="2.5" stroke-linejoin="round" width="24" height="24">
         <path d="M12 2 L19 21 Q12 18 5 21 Z" />
       </svg>
@@ -153,6 +153,51 @@ const isRaceTarget = (checkpoint) => {
   return kind === 'start' || kind === 'buoy' || kind === 'gate' || kind === 'finish';
 };
 
+const getTargetCenter = (target) => {
+  if (!target) return null;
+  if (getCheckpointKind(target) === 'buoy' && target.coord) {
+    return { lat: target.coord[0], lng: target.coord[1] };
+  }
+  if (target.coords) {
+    return {
+      lat: (target.coords[0][0] + target.coords[1][0]) / 2,
+      lng: (target.coords[0][1] + target.coords[1][1]) / 2,
+    };
+  }
+  return null;
+};
+
+const getBuoyRoundingPlan = (target, targets, targetIndex) => {
+  const buoyPt = turf.point([target.coord[1], target.coord[0]]);
+  const prevCenter = getTargetCenter(targets[targetIndex - 1]);
+  const nextCenter = getTargetCenter(targets[targetIndex + 1]);
+
+  let approachBearing = prevCenter
+    ? turf.bearing(turf.point([prevCenter.lng, prevCenter.lat]), buoyPt)
+    : 0;
+
+  let exitBearing = nextCenter
+    ? turf.bearing(buoyPt, turf.point([nextCenter.lng, nextCenter.lat]))
+    : approachBearing;
+
+  const isPort = (target.rounding || 'port').toLowerCase() === 'port';
+  const side = isPort ? 90 : -90;
+  const laneDistance = 0.045;
+  const approach = turf.destination(buoyPt, laneDistance, approachBearing + side, { units: 'kilometers' });
+  const exit = turf.destination(buoyPt, laneDistance, exitBearing + side, { units: 'kilometers' });
+
+  return {
+    approach: {
+      lat: approach.geometry.coordinates[1],
+      lng: approach.geometry.coordinates[0],
+    },
+    exit: {
+      lat: exit.geometry.coordinates[1],
+      lng: exit.geometry.coordinates[0],
+    },
+  };
+};
+
 function MapInitialLocationCenterer() {
   const map = useMap();
   const centeredRef = useRef(false);
@@ -214,9 +259,11 @@ function MapControls({ pos, autoCenter, setAutoCenter }) {
     if (autoCenter && pos && pos.lat && pos.lng) {
       const center = map.getCenter();
       const dist = map.distance([pos.lat, pos.lng], center);
-      // If boat moves more than 15 meters from current map center, smoothly recenter Map
-      if (dist > 15) {
-        map.panTo([pos.lat, pos.lng], { animate: true, duration: 0.5 });
+      const now = Date.now();
+      // Recenter in gentle pulses instead of chasing every simulation frame.
+      if (dist > 45 && now - lastPanTime.current > 900) {
+        lastPanTime.current = now;
+        map.panTo([pos.lat, pos.lng], { animate: true, duration: 0.85 });
       }
     }
   }, [autoCenter, pos?.lat, pos?.lng, map]);
@@ -467,12 +514,20 @@ const normalizeCourse = (courseObj) => {
   };
 };
 
+const tuneTrailColor = (hex, isWake = false) => {
+  if (!hex || !hex.startsWith('#')) return hex;
+  const amount = isWake ? 0.72 : 0.84;
+  const r = Math.max(0, Math.round(parseInt(hex.slice(1, 3), 16) * amount));
+  const g = Math.max(0, Math.round(parseInt(hex.slice(3, 5), 16) * amount));
+  const b = Math.max(0, Math.round(parseInt(hex.slice(5, 7), 16) * amount));
+  return `rgb(${r}, ${g}, ${b})`;
+};
+
 const renderFadingTrail = (points, color, isWake = false, isAi = false) => {
   const len = points.length;
   if (len < 2) return null;
 
-  // Make trails longer (render up to 160 points)
-  const maxPoints = 160;
+  const maxPoints = isAi ? 125 : 170;
   const startIdx = Math.max(0, len - maxPoints);
   const activePoints = points.slice(startIdx);
   const activeLen = activePoints.length;
@@ -481,15 +536,14 @@ const renderFadingTrail = (points, color, isWake = false, isAi = false) => {
   
   // Custom base weight for AI boats (thinner than user boat)
   const baseWeight = isWake 
-    ? (isAi ? 8 : 12) 
-    : (isAi ? 2 : 3);
+    ? (isAi ? 6 : 9) 
+    : (isAi ? 1.7 : 2.4);
     
-  // Custom base opacity for AI boats (highly transparent but visible)
   const baseOpacity = isWake 
-    ? (isAi ? 0.12 : 0.20) 
-    : (isAi ? 0.35 : 0.55);
+    ? (isAi ? 0.055 : 0.09) 
+    : (isAi ? 0.24 : 0.36);
     
-  const lineColor = isWake ? '#cbd5e1' : color;
+  const lineColor = tuneTrailColor(color, isWake);
 
   for (let i = 0; i < activeLen - 1; i++) {
     const p1 = activePoints[i];
@@ -498,9 +552,7 @@ const renderFadingTrail = (points, color, isWake = false, isAi = false) => {
     // progress ranges from 0.0 (oldest segment) to 1.0 (newest segment)
     const progress = i / (activeLen - 2 || 1);
     
-    // Concave fade curve (progress^0.7) ensures the trail decays gradually
-    // all the way down to exactly 0.0 at the tail, rather than cutting off abruptly.
-    const opacity = baseOpacity * Math.pow(progress, 0.7);
+    const opacity = baseOpacity * Math.pow(progress, isAi ? 1.85 : 1.65);
     
     // Smooth thickness taper (tapers down to 15% for AI, 20% for user)
     const minScale = isAi ? 0.15 : 0.2;
@@ -523,9 +575,36 @@ const renderFadingTrail = (points, color, isWake = false, isAi = false) => {
   return <React.Fragment>{segments}</React.Fragment>;
 };
 
-export default function BoatPwaMain({ courseOverride, onStatusChange, showDots = true }) {
+const renderTrailDots = (points, color, keyPrefix) => {
+  const len = points.length;
+  if (len === 0) return null;
+  const maxDots = 80;
+  const startIdx = Math.max(0, len - maxDots);
+  const activePoints = points.slice(startIdx);
+  const lastIndex = activePoints.length - 1 || 1;
+
+  return activePoints.map((p, idx) => {
+    const progress = idx / lastIndex;
+    const opacity = 0.5 * Math.pow(progress, 1.7);
+    if (opacity < 0.04) return null;
+    return (
+      <CircleMarker
+        key={`${keyPrefix}-${startIdx + idx}`}
+        center={[p.lat, p.lng]}
+        radius={2}
+        color={tuneTrailColor(color)}
+        fillColor={tuneTrailColor(color)}
+        fillOpacity={opacity}
+        opacity={opacity}
+        stroke={false}
+      />
+    );
+  });
+};
+
+export default function BoatPwaMain({ courseOverride, onStatusChange, showDots = false }) {
   const [isLiveMode, setIsLiveMode] = useState(true);
-  const [is3dMode, setIs3dMode] = useState(false);
+  const [is3dMode, setIs3dMode] = useState(true);
 
   // Callback for live GPS trace — runs inside useGpsTracker on each captured fix
   const liveTrackCallback = React.useCallback((point) => {
@@ -640,6 +719,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
     autoSteerPhase.current = 'race';
     upwindWaypointRef.current = null;
     hasPassedEntranceRef.current = false;
+    roundingWaypointMinRef.current = { approach: Infinity, exit: Infinity };
   }, [isLiveMode]);
 
   // ── Auto Steer ─────────────────────────────────────────────────────────────
@@ -710,49 +790,9 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           const tPt = turf.point([tLng, tLat]);
 
           if (kind === 'buoy') {
-             // Calculate a FIXED approach bearing to determine the offset target
-             let approachBearing = 0;
-             const prevTarget = targets[activeTargetIndex - 1];
-             if (prevTarget) {
-                 let ptLat, ptLng;
-                 if (prevTarget.kind === 'buoy' && prevTarget.coord) { 
-                     ptLat = prevTarget.coord[0]; ptLng = prevTarget.coord[1]; 
-                 } else if (prevTarget.coords) { 
-                     ptLat = (prevTarget.coords[0][0] + prevTarget.coords[1][0])/2; 
-                     ptLng = (prevTarget.coords[0][1] + prevTarget.coords[1][1])/2; 
-                 }
-                 if (ptLat !== undefined && ptLng !== undefined) {
-                     approachBearing = turf.bearing(turf.point([ptLng, ptLat]), tPt);
-                 }
-             } else {
-                 approachBearing = upwindWaypointRef.current ? turf.bearing(turf.point([upwindWaypointRef.current.lng, upwindWaypointRef.current.lat]), tPt) : 0;
-             }
-
-             let exitBearing = approachBearing;
-             const nextTarget = targets[activeTargetIndex + 1];
-             if (nextTarget) {
-                 let ntLat, ntLng;
-                 if (nextTarget.kind === 'buoy' && nextTarget.coord) {
-                     ntLat = nextTarget.coord[0]; ntLng = nextTarget.coord[1];
-                 } else if (nextTarget.coords) {
-                     ntLat = (nextTarget.coords[0][0] + nextTarget.coords[1][0])/2;
-                     ntLng = (nextTarget.coords[0][1] + nextTarget.coords[1][1])/2;
-                 }
-                 if (ntLat !== undefined && ntLng !== undefined) {
-                     exitBearing = turf.bearing(tPt, turf.point([ntLng, ntLat]));
-                 }
-             }
-
-             const isPort = (target.rounding || 'port').toLowerCase() === 'port';
-             const offsetBearing = hasPassedEntranceRef.current
-                 ? (exitBearing + (isPort ? 90 : -90))
-                 : (approachBearing + (isPort ? 90 : -90));
-
-             // 25m offset to ensure we clear the buoy nicely
-             const offsetTarget = turf.destination(tPt, 0.025, offsetBearing, { units: 'kilometers' });
-             
-             // Steer towards this FIXED offset target
-             desiredBearing = turf.bearing(boatPt, offsetTarget);
+             const plan = getBuoyRoundingPlan(target, targets, activeTargetIndex);
+             const waypoint = hasPassedEntranceRef.current ? plan.exit : plan.approach;
+             desiredBearing = turf.bearing(boatPt, turf.point([waypoint.lng, waypoint.lat]));
           } else {
              const dist = turf.distance(boatPt, tPt, { units: 'kilometers' });
              if (dist <= 0.12) {
@@ -787,6 +827,9 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
       setCourse(normalizeCourse(courseOverride));
       setActiveTargetIndex(0);
       minDistanceRef.current = Infinity;
+      closestSideRef.current = null;
+      hasPassedEntranceRef.current = false;
+      roundingWaypointMinRef.current = { approach: Infinity, exit: Infinity };
       return;
     }
 
@@ -862,9 +905,10 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
             if (Math.abs(diff) <= 0.5) {
               currentHdg = targetHdg;
             } else {
-              // 20 FPS Ease-out interpolation
-              let turnSpeed = Math.abs(diff) * 0.1;
-              turnSpeed = Math.min(Math.max(turnSpeed, 0.2), 2.0); // max 40 deg/sec
+              const currentMultiplier = prev.timeMultiplier || 1;
+              const maxTurnPerTick = Math.min(6.2, 2.2 + currentMultiplier * 0.16);
+              let turnSpeed = Math.abs(diff) * 0.18;
+              turnSpeed = Math.min(Math.max(turnSpeed, 0.35), maxTurnPerTick);
               currentHdg += Math.sign(diff) * turnSpeed;
               currentHdg = (currentHdg + 360) % 360;
             }
@@ -964,6 +1008,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
   const closestSideRef = useRef(null);
   const lastPosRef = useRef(null);
   const hasPassedEntranceRef = useRef(false);
+  const roundingWaypointMinRef = useRef({ approach: Infinity, exit: Infinity });
 
   // Auto-advance to next buoy using Closest Point of Approach (CPA)
   useEffect(() => {
@@ -1014,77 +1059,46 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
         }
         
         if (lineCrossed && activeTargetIndex < targets.length) {
-          setActiveTargetIndex(prev => prev + 1);
-          minDistanceRef.current = Infinity; // Reset for next target
-          closestSideRef.current = null;
-          if (activeTargetIndex === 0) {
-            autoSteerPhase.current = 'race';
-          }
+        setActiveTargetIndex(prev => prev + 1);
+        minDistanceRef.current = Infinity; // Reset for next target
+        closestSideRef.current = null;
+        roundingWaypointMinRef.current = { approach: Infinity, exit: Infinity };
+        if (activeTargetIndex === 0) {
+          autoSteerPhase.current = 'race';
+        }
         }
       } else {
-        // Find reference coordinates
-        const prevTarget = targets[activeTargetIndex - 1];
-        const nextTarget = targets[activeTargetIndex + 1];
-        
-        let prevCoord = prevTarget ? prevTarget.coord : null;
-        if (!prevCoord && prevTarget && prevTarget.coords) {
-          prevCoord = [
-            (prevTarget.coords[0][0] + prevTarget.coords[1][0]) / 2,
-            (prevTarget.coords[0][1] + prevTarget.coords[1][1]) / 2
-          ];
-        }
-        if (!prevCoord) {
-          prevCoord = upwindWaypointRef.current ? [upwindWaypointRef.current.lat, upwindWaypointRef.current.lng] : [activePos.lat, activePos.lng];
-        }
+        const plan = getBuoyRoundingPlan(target, targets, activeTargetIndex);
+        const boatPt = turf.point([activePos.lng, activePos.lat]);
+        const approachPt = turf.point([plan.approach.lng, plan.approach.lat]);
+        const exitPt = turf.point([plan.exit.lng, plan.exit.lat]);
+        const approachDistance = turf.distance(boatPt, approachPt, { units: 'kilometers' });
+        const exitDistance = turf.distance(boatPt, exitPt, { units: 'kilometers' });
+        const waypointRadius = 0.04;
 
-        let nextCoord = nextTarget ? nextTarget.coord : null;
-        if (!nextCoord && nextTarget && nextTarget.coords) {
-          nextCoord = [
-            (nextTarget.coords[0][0] + nextTarget.coords[1][0]) / 2,
-            (nextTarget.coords[0][1] + nextTarget.coords[1][1]) / 2
-          ];
-        }
-        if (!nextCoord) {
-          nextCoord = [target.coord[0], target.coord[1]]; // fallback
-        }
-
-        const vX = target.coord[1] - prevCoord[1];
-        const vY = target.coord[0] - prevCoord[0];
-        const uX = nextCoord[1] - target.coord[1];
-        const uY = nextCoord[0] - target.coord[0];
-        const wX = activePos.lng - target.coord[1];
-        const wY = activePos.lat - target.coord[0];
-
-        const dotIn = vX * wX + vY * wY;
-        const dotOut = uX * wX + uY * wY;
-
-        // Check entrance
         if (!hasPassedEntranceRef.current) {
-          const entrancePassed = dotIn > 0 && distance < 0.15;
-          const isSharpTurn = (vX * uX + vY * uY) < 0;
-          const isFarSideCorrect = !isSharpTurn || (dotOut < 0);
-
-          if ((entrancePassed && isFarSideCorrect) || distance < 0.045) {
-            const crossIn = vX * wY - vY * wX;
-            const rounding = (target.rounding || 'port').toLowerCase();
-            const sideCorrect = rounding === 'port' ? (crossIn < 0) : (crossIn > 0);
-            if (sideCorrect || distance < 0.045) {
-              hasPassedEntranceRef.current = true;
-            }
-          }
+          roundingWaypointMinRef.current.approach = Math.min(roundingWaypointMinRef.current.approach, approachDistance);
+        } else {
+          roundingWaypointMinRef.current.exit = Math.min(roundingWaypointMinRef.current.exit, exitDistance);
         }
 
-        // Check exit / completion
-        if (hasPassedEntranceRef.current && (dotOut > 0 || distance > 0.06)) {
+        const passedApproach = approachDistance < waypointRadius
+          || (roundingWaypointMinRef.current.approach < 0.055 && approachDistance > roundingWaypointMinRef.current.approach + 0.025);
+
+        if (!hasPassedEntranceRef.current && passedApproach) {
+          hasPassedEntranceRef.current = true;
+          roundingWaypointMinRef.current.exit = Infinity;
+        }
+
+        const passedExit = exitDistance < waypointRadius
+          || (roundingWaypointMinRef.current.exit < 0.055 && exitDistance > roundingWaypointMinRef.current.exit + 0.025);
+
+        if (hasPassedEntranceRef.current && passedExit) {
           setActiveTargetIndex(prev => prev + 1);
           minDistanceRef.current = Infinity;
           closestSideRef.current = null;
           hasPassedEntranceRef.current = false;
-        } else if (distance > minDistanceRef.current + 0.1 && minDistanceRef.current < 0.4 && !hasPassedEntranceRef.current) {
-          // If we passed the buoy (distance is increasing) but failed entrance check (wrong side),
-          // reset minDistance so we can circle back and try again
-          minDistanceRef.current = Infinity;
-          closestSideRef.current = null;
+          roundingWaypointMinRef.current = { approach: Infinity, exit: Infinity };
         }
       }
     }
@@ -1202,9 +1216,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
           {renderFadingTrail(trace, '#FF5D00', true, false)}
           {renderFadingTrail(trace, '#FF5D00', false, false)}
           
-          {showDots && trace.map((p, idx) => (
-            <CircleMarker key={`trace-${idx}`} center={[p.lat, p.lng]} radius={3} color="#FF5D00" fillColor="#FF5D00" fillOpacity={1} stroke={false} />
-          ))}
+          {showDots && renderTrailDots(trace, '#FF5D00', 'trace')}
           
           {syncingQueue.length > 0 && (
             <React.Fragment>
@@ -1212,9 +1224,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
                 positions={(trace.length > 0 ? [trace[trace.length - 1], ...syncingQueue] : syncingQueue).map(p => [p.lat, p.lng])} 
                 color="#EAB308" weight={3} opacity={0.8} 
               />
-              {showDots && syncingQueue.map((p, idx) => (
-                <CircleMarker key={`sync-${idx}`} center={[p.lat, p.lng]} radius={3} color="#EAB308" fillColor="#EAB308" fillOpacity={1} stroke={false} />
-              ))}
+              {showDots && renderTrailDots(syncingQueue, '#EAB308', 'sync')}
             </React.Fragment>
           )}
           
@@ -1224,9 +1234,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
                 positions={(syncingQueue.length > 0 ? [syncingQueue[syncingQueue.length - 1], ...offlineQueue] : (trace.length > 0 ? [trace[trace.length - 1], ...offlineQueue] : offlineQueue)).map(p => [p.lat, p.lng])} 
                 color="#EF4444" weight={3} opacity={0.8} 
               />
-              {showDots && offlineQueue.map((p, idx) => (
-                <CircleMarker key={`off-${idx}`} center={[p.lat, p.lng]} radius={3} color="#EF4444" fillColor="#EF4444" fillOpacity={1} stroke={false} />
-              ))}
+              {showDots && renderTrailDots(offlineQueue, '#EF4444', 'off')}
             </React.Fragment>
           )}
           
@@ -1328,7 +1336,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
                if (isTarget) {
                  iconToUse = createTargetBuoyIcon(cp.rounding || 'port', cp.id);
                }
-               return <Marker key={idx} position={[cp.coord[0], cp.coord[1]]} icon={iconToUse} opacity={isTarget ? 1 : 0.6} zIndexOffset={-500} />;
+               return <Marker key={idx} position={[cp.coord[0], cp.coord[1]]} icon={iconToUse} opacity={isTarget ? 1 : 0.22} zIndexOffset={-500} />;
             } else if (kind === 'gate' || kind === 'start' || kind === 'finish') {
                const lineKind = kind === 'finish' ? 'finish' : kind === 'start' ? 'start' : 'gate';
                return (
@@ -1337,7 +1345,7 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
                    coords={cp.coords}
                    kind={lineKind}
                    crossing={cp.crossing}
-                   opacity={isTarget ? 1 : 0.4}
+                   opacity={isTarget ? 1 : 0.16}
                    zIndexOffset={-500}
                  />
                );
@@ -1347,12 +1355,25 @@ export default function BoatPwaMain({ courseOverride, onStatusChange, showDots =
         </MapContainer>
       )}
 
-
-
-
+      <div style={{ position: 'absolute', top: '10px', left: '12px', zIndex: 1001, display: 'flex', alignItems: 'center', background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderRadius: '21px', padding: '3px', border: '1px solid rgba(0,0,0,0.1)', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+        <button
+          type="button"
+          onClick={() => setIs3dMode(false)}
+          aria-pressed={!is3dMode}
+          style={{ minWidth: '42px', padding: '5px 11px', borderRadius: '18px', border: 'none', background: !is3dMode ? 'var(--accent-blue)' : 'transparent', color: !is3dMode ? 'white' : 'var(--text-secondary)', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', transition: 'all 0.2s ease', whiteSpace: 'nowrap', lineHeight: 1 }}>
+          2D
+        </button>
+        <button
+          type="button"
+          onClick={() => setIs3dMode(true)}
+          aria-pressed={is3dMode}
+          style={{ minWidth: '42px', padding: '5px 11px', borderRadius: '18px', border: 'none', background: is3dMode ? 'var(--accent-blue)' : 'transparent', color: is3dMode ? 'white' : 'var(--text-secondary)', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', transition: 'all 0.2s ease', whiteSpace: 'nowrap', lineHeight: 1 }}>
+          3D
+        </button>
+      </div>
 
       <div style={{ position: 'absolute', bottom: 'max(15px, env(safe-area-inset-bottom))', left: '50%', transform: 'translateX(-50%)', width: '90%', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 999 }}>
-        <div className="simulator-panel" style={{ padding: '0 8px', background: 'transparent', boxShadow: 'none', border: 'none', position: 'relative', bottom: 'auto', right: 'auto', width: '100%', display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="simulator-panel" style={{ padding: '0 8px', background: 'transparent', boxShadow: 'none', border: 'none', position: 'relative', bottom: 'auto', right: 'auto', width: '100%', display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
           
           <div style={{ display: 'flex', background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderRadius: '24px', padding: '4px', border: '1px solid rgba(0,0,0,0.1)', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
             <button 
